@@ -10,7 +10,7 @@ API HTTP responsável pelos fluxos de inscrição, pedidos, pagamentos, convites
 - [Tecnologias](#tecnologias)
 - [Arquitetura](#arquitetura)
 - [Configuração local](#configuração-local)
-- [Deploy com Docker e Ofelia](#deploy-com-docker-e-ofelia)
+- [Deploy com Docker Compose](#deploy-com-docker-compose)
 - [Banco de dados](#banco-de-dados)
 - [Autenticação](#autenticação)
 - [Convenções da API](#convenções-da-api)
@@ -132,9 +132,9 @@ Com `SERVER_PORT=5000`, a URL local é:
 http://179.198.123.120:5000
 ```
 
-## Deploy com Docker e Ofelia
+## Deploy com Docker Compose
 
-O deploy utiliza um container base mantido ativo com `tail -f /dev/null`. A execução do servidor é iniciada e supervisionada pelo Ofelia por meio de um job `job-exec`.
+O Compose executa o servidor Node.js continuamente. A política `restart: unless-stopped` reinicia o backend se o processo terminar com erro ou se o host for reiniciado, exceto quando o container for interrompido manualmente.
 
 ### Preparar a rede externa
 
@@ -167,19 +167,18 @@ O Compose:
 - publica a porta definida em `SERVER_PORT`;
 - monta `./logs` e `./data` como diretórios persistentes;
 - conecta o serviço à rede externa `automacoes-ti-internal`;
-- mantém o container disponível para o `job-exec` do Ofelia.
+- executa `node /app/server.js` como processo principal;
+- mantém o serviço ativo com `restart: unless-stopped`.
 
-### Execução pelo Ofelia
+### Ciclo de vida do serviço
 
-O job `application-eventos-backend` tenta executar o comando abaixo a cada 10 segundos:
+O comando principal do container é:
 
 ```bash
 node /app/server.js
 ```
 
-A opção `no-overlap=true` impede execuções simultâneas enquanto o servidor estiver ativo. Se o processo terminar, o próximo ciclo do Ofelia inicia uma nova execução.
-
-O Ofelia deve estar ativo no mesmo host, com acesso ao Docker e leitura dos labels dos containers. Se a instalação não fizer descoberta dinâmica de labels, reinicie o daemon do Ofelia depois de subir este serviço.
+Esse backend é um serviço HTTP permanente e não depende de um agendamento do Ofelia para iniciar. O Ofelia pode continuar sendo utilizado no mesmo ambiente para tarefas agendadas independentes.
 
 ### Verificação
 
@@ -188,7 +187,7 @@ docker compose -f compose.yml ps
 docker logs application-eventos-backend
 ```
 
-Após o primeiro disparo do Ofelia, a API fica disponível em:
+Depois que o container estiver saudável e em execução, a API fica disponível em:
 
 ```text
 http://179.198.123.120:5000
@@ -443,19 +442,6 @@ O hook atualmente recebe `nome`, mas o controller utiliza o primeiro argumento c
 ```json
 {
   "nome_evento": "teste",
-  "cnpj": "12345678000199",
-  "razao_social": "Empresa Exemplo LTDA",
-  "cep": "70000000",
-  "endereco": "Rua Exemplo, 100",
-  "complemento": "Sala 10",
-  "bairro": "Centro",
-  "cidade": "Brasília",
-  "uf": "DF",
-  "enviou_convite": true,
-  "tipo_quarto": "DUPLO",
-  "divisao_pagamento": true,
-  "quantidade_parcelas": 2,
-  "valor_total": 1000,
   "clientes": [
     {
       "nome": "Felipe Barbosa",
@@ -472,7 +458,7 @@ O hook atualmente recebe `nome`, mas o controller utiliza o primeiro argumento c
       "nome_cracha": "Maria",
       "cpf": "98765432100",
       "email": "maria@email.com",
-      "data_nascimento": "1997-08-12",
+      "data_nascimento": "1993-08-15",
       "telefone": "61988888888",
       "tm_camiseta": "P",
       "tm_chinelo": "36"
@@ -480,16 +466,32 @@ O hook atualmente recebe `nome`, mas o controller utiliza o primeiro argumento c
   ],
   "criancas": [
     {
-      "nome_crianca": "Criança Exemplo",
+      "nome_crianca": "João Barbosa",
       "cpf_crianca": "11122233344",
-      "data_nascimento": "2018-04-10"
+      "data_nascimento": "2018-03-10"
     }
   ],
+  "cnpj": "12345678000199",
+  "razao_social": "Empresa Teste LTDA",
+  "cep": "70000000",
+  "endereco": "Rua das Flores, 100",
+  "complemento": "Sala 10",
+  "bairro": "Centro",
+  "cidade": "Brasília",
+  "uf": "DF",
+  "enviou_convite": true,
+  "nome_convidado": "Carlos Souza",
+  "cpf_convidado": "55566677788",
+  "cnpj_convidado": "12345678000199",
+  "email_convidado": "carlos@email.com",
+  "pedido_origem": "POSTMAN-TESTE-001",
+  "divisao_pagamento": "true",
+  "valor_total": 1000.00,
+  "quantidade_parcelas": 2,
   "transfer": [
     {
-      "data_embarque": "2026-11-10",
-      "regiao_embarque": "Brasília",
-      "horario_embarque": "15:30"
+      "data_embarque": null,
+      "regiao_embarque": "Brasília"
     }
   ]
 }
@@ -500,8 +502,21 @@ Regras estruturais do payload:
 - `clientes` deve ser um array não vazio;
 - o primeiro cliente é tratado como responsável/anfitrião;
 - os demais clientes são tratados como convidados;
-- `criancas` e `transfer` são arrays opcionais;
+- `criancas` é um array opcional;
+- `transfer` deve ser um array com exatamente um item;
+- `data_embarque`, `horario_embarque` e `tipo_quarto` são opcionais;
+- `divisao_pagamento` aceita booleano ou as strings `"true"` e `"false"`;
+- quando `enviou_convite` for verdadeiro, `nome_convidado`, `cpf_convidado` e `email_convidado` são obrigatórios;
 - os dados de empresa não são repetidos em cada cliente.
+
+O fluxo aceita exatamente um item em `transfer`. Por requisição, empresa,
+convite e pedido geram no máximo um registro. Clientes e crianças seguem a
+quantidade de itens das respectivas listas; parcelas seguem a quantidade de
+clientes multiplicada por `quantidade_parcelas`.
+
+`pedido_origem` e `cnpj_convidado` são aceitos no payload, mas ainda não são
+persistidos porque o esquema atual não possui colunas correspondentes em
+`EV_PEDIDOS` ou `EV_REGISTRO_CONVITES`.
 
 ### Resgatar convite
 

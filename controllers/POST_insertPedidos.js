@@ -6,7 +6,7 @@ import { config } from "dotenv";
 export default async function postInsertPedidos(nome,email,cpf,cnpj,tipo_quarto,divisao_pagamento, quantidade_parcelas, data_embarque, regiao_embarque,horario_embarque,id_pedido) {
     try {
         
-        const direnv = pathAbsolute('.ven')
+        const direnv = pathAbsolute('.env')
         config({path: direnv})
         const ambient = process.env.AMBIENT
         const hoje = geraDataHoje()
