@@ -10,6 +10,7 @@ API HTTP responsável pelos fluxos de inscrição, pedidos, pagamentos, convites
 - [Tecnologias](#tecnologias)
 - [Arquitetura](#arquitetura)
 - [Configuração local](#configuração-local)
+- [Deploy com Docker e Ofelia](#deploy-com-docker-e-ofelia)
 - [Banco de dados](#banco-de-dados)
 - [Autenticação](#autenticação)
 - [Convenções da API](#convenções-da-api)
@@ -128,8 +129,72 @@ node --watch server.js
 Com `SERVER_PORT=5000`, a URL local é:
 
 ```text
-http://localhost:5000
+http://179.198.123.120:5000
 ```
+
+## Deploy com Docker e Ofelia
+
+O deploy utiliza um container base mantido ativo com `tail -f /dev/null`. A execução do servidor é iniciada e supervisionada pelo Ofelia por meio de um job `job-exec`.
+
+### Preparar a rede externa
+
+Crie a rede uma única vez no host, caso ela ainda não exista:
+
+```bash
+docker network create automacoes-ti-internal
+```
+
+### Construir e iniciar o container
+
+Prepare os diretórios persistentes no host Linux:
+
+```bash
+mkdir -p logs data
+sudo chown -R 10001:10001 logs data
+```
+
+Em seguida, construa e inicie o serviço:
+
+```bash
+docker compose -f compose.yml up -d --build
+```
+
+O Compose:
+
+- constrói a imagem a partir do `Dockerfile`;
+- executa processos com o usuário não-root `10001:10001`;
+- carrega as variáveis do arquivo `.env` em runtime;
+- publica a porta definida em `SERVER_PORT`;
+- monta `./logs` e `./data` como diretórios persistentes;
+- conecta o serviço à rede externa `automacoes-ti-internal`;
+- mantém o container disponível para o `job-exec` do Ofelia.
+
+### Execução pelo Ofelia
+
+O job `application-eventos-backend` tenta executar o comando abaixo a cada 10 segundos:
+
+```bash
+node /app/server.js
+```
+
+A opção `no-overlap=true` impede execuções simultâneas enquanto o servidor estiver ativo. Se o processo terminar, o próximo ciclo do Ofelia inicia uma nova execução.
+
+O Ofelia deve estar ativo no mesmo host, com acesso ao Docker e leitura dos labels dos containers. Se a instalação não fizer descoberta dinâmica de labels, reinicie o daemon do Ofelia depois de subir este serviço.
+
+### Verificação
+
+```bash
+docker compose -f compose.yml ps
+docker logs application-eventos-backend
+```
+
+Após o primeiro disparo do Ofelia, a API fica disponível em:
+
+```text
+http://179.198.123.120:5000
+```
+
+Se `SERVER_PORT` tiver outro valor, substitua `5000` pela porta configurada.
 
 ## Banco de dados
 
