@@ -11,7 +11,7 @@ export default async function  getClientes(req, res) {
         const client = await supabase()
         const {data, error} = await client
             .schema(ambient)
-            .from('EV_CADASTRO_CLIENTES')
+            .from('vw_ev_clientes')
             .select('*')
         if(error) {
             return res.status(400).json({

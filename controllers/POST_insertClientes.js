@@ -3,7 +3,7 @@ import pathAbsolute from '../functions/pathAbsolute.js'
 import geraDataHoje from '../functions/geraDataHoje.js'
 import { config } from 'dotenv'
 
-export default async function postInsertClientes(nome,nome_cracha,cpf,email,data_nascimento,tm_camiseta,tm_chinelo,enviou_convite,cnpj,telefone,tipo_cliente) {
+export default async function postInsertClientes(nome,nome_cracha,cpf,email,data_nascimento,tm_camiseta,tm_chinelo,enviou_convite,cnpj,telefone,tipo_cliente,participa_auditorio,idade_evento,categoria,valor_individual) {
     try {
         
         const hoje = geraDataHoje()
@@ -29,7 +29,11 @@ export default async function postInsertClientes(nome,nome_cracha,cpf,email,data
                     "cnpj": cnpj,
                     "telefone": telefone,
                     "tipo_cliente": tipo_cliente,
-                    "presenca_cancelada": false
+                    "presenca_cancelada": false,
+                    "participa_auditorio": participa_auditorio,
+                    "idade_evento": idade_evento,
+                    "categoria": categoria,
+                    "valor_individual": valor_individual
             })
 
         if(error) {

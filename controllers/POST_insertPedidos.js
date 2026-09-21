@@ -3,7 +3,7 @@ import pathAbsolute from "../functions/pathAbsolute.js";
 import geraDataHoje from "../functions/geraDataHoje.js";
 import { config } from "dotenv";
 
-export default async function postInsertPedidos(nome,email,cpf,cnpj,tipo_quarto,divisao_pagamento, quantidade_parcelas, data_embarque, regiao_embarque,horario_embarque,id_pedido) {
+export default async function postInsertPedidos(nome,email,cpf,cnpj,tipo_quarto,divisao_pagamento, quantidade_parcelas, data_embarque, regiao_embarque,horario_embarque,data_desembarque,regiao_desembarque,horario_desembarque,id_pedido) {
     try {
         
         const direnv = pathAbsolute('.env')
@@ -28,6 +28,9 @@ export default async function postInsertPedidos(nome,email,cpf,cnpj,tipo_quarto,
             "data_embarque": data_embarque,
             "regiao_embarque":regiao_embarque,
             "horario_embarque": horario_embarque,
+            "data_desembarque": data_desembarque,
+            "regiao_desembarque": regiao_desembarque,
+            "horario_desembarque": horario_desembarque,
             "id_pedido": id_pedido,
             "pedido_ativo": true
             })

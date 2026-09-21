@@ -9,6 +9,7 @@ import hookAlteraCheckout from "../hooks/alteraCheckout.js";
 import hookAlteraChecking from "../hooks/alteraChecking.js";
 import hookCadastro from "../hooks/cadastroEvento.js";
 import hookConfirmaConvite from "../hooks/confirmaConvite.js";
+import hookReativaPedido from "../hooks/reativaPedido.js";
 
 //POST
 import postConsultaInscricao from "../controllers/POST_consultaInscricao.js";
@@ -16,6 +17,7 @@ import login from "../controllers/POST_login.js";
 import postAtualizaPedidos from "../controllers/POST_atualizaPedido.js";
 import postBaixaParcela from "../controllers/POST_baixaParcela.js";
 import postReactiveInscricaoRoute from '../controllers/POST_cancelaReservaRoute.js'
+import postResgataPedido from '../controllers/POST_resgataPedido.js'
 
 //GET
 import getConsultaParcelas from '../controllers/GET_consultaParcelas.js'
@@ -41,6 +43,8 @@ router.post('/posts/auth/loginaadministrator', login)
 router.post('/posts/orders/modify/ordercheckingcheckou', postAtualizaPedidos)
 router.post('/posts/payments/administrator/check', postBaixaParcela)
 router.post('/posts/orders/functions/reactiveOrder', postReactiveInscricaoRoute)
+router.post('/orders/filterorder/getorder', postResgataPedido)
+
 
 //Hooks
 router.post('/hooks/autocompletecnpj', hookAutocompleteCnpj)
@@ -48,6 +52,8 @@ router.post('/hooks/cancelaParticipacao', hookCancelaParticipacao)
 router.post('/hooks/alteraCheckout', hookAlteraCheckout)
 router.post('/hooks/alteraChecking', hookAlteraChecking)
 router.post('/hooks/cadastro', hookCadastro)
+router.post('/hooks/cadastroevento', hookCadastro)
 router.post('/hooks/resgateconvite', hookConfirmaConvite)
+router.post('/hooks/orders/reactiveorders', hookReativaPedido)
 
 export default router

@@ -439,6 +439,12 @@ O hook atualmente recebe `nome`, mas o controller utiliza o primeiro argumento c
 
 `POST /hooks/cadastro`
 
+O cadastro é validado e recalculado pelo backend e depois enviado para uma única
+função PostgreSQL. Empresa, clientes, crianças, pedido, transfer e parcelas são
+gravados na mesma transação. Qualquer falha provoca rollback integral.
+
+#### Exemplo de request
+
 ```json
 {
   "nome_evento": "teste",
@@ -446,77 +452,158 @@ O hook atualmente recebe `nome`, mas o controller utiliza o primeiro argumento c
     {
       "nome": "Felipe Barbosa",
       "nome_cracha": "Felipe",
-      "cpf": "12345678901",
+      "cpf": "52998224725",
       "email": "felipe@email.com",
       "data_nascimento": "1995-05-20",
       "telefone": "61999999999",
       "tm_camiseta": "M",
-      "tm_chinelo": "40"
+      "tm_chinelo": "39/40",
+      "participa_auditorio": true,
+      "idade_evento": 31,
+      "categoria": "Adulto",
+      "valor_individual": 3848
     },
     {
       "nome": "Maria Oliveira",
       "nome_cracha": "Maria",
-      "cpf": "98765432100",
+      "cpf": "11144477735",
       "email": "maria@email.com",
       "data_nascimento": "1993-08-15",
       "telefone": "61988888888",
       "tm_camiseta": "P",
-      "tm_chinelo": "36"
+      "tm_chinelo": "35/36",
+      "participa_auditorio": false,
+      "idade_evento": 33,
+      "categoria": "Adulto",
+      "valor_individual": 3848
     }
   ],
   "criancas": [
     {
       "nome_crianca": "João Barbosa",
-      "cpf_crianca": "11122233344",
-      "data_nascimento": "2018-03-10"
+      "cpf_crianca": "12345678909",
+      "data_nascimento": "2018-03-10",
+      "email": "responsavel@email.com",
+      "tm_camiseta": "P",
+      "tm_chinelo": "35/36",
+      "idade_evento": 9,
+      "categoria": "Criança de 4 a 11 anos",
+      "valor_individual": 2064
     }
   ],
-  "cnpj": "12345678000199",
+  "cnpj": "11222333000181",
   "razao_social": "Empresa Teste LTDA",
   "cep": "70000000",
   "endereco": "Rua das Flores, 100",
-  "complemento": "Sala 10",
+  "complemento": "Não informado",
   "bairro": "Centro",
   "cidade": "Brasília",
   "uf": "DF",
-  "enviou_convite": true,
-  "nome_convidado": "Carlos Souza",
-  "cpf_convidado": "55566677788",
-  "cnpj_convidado": "12345678000199",
-  "email_convidado": "carlos@email.com",
-  "pedido_origem": "POSTMAN-TESTE-001",
-  "divisao_pagamento": "true",
-  "valor_total": 1000.00,
-  "quantidade_parcelas": 2,
+  "enviou_convite": false,
   "transfer": [
     {
       "data_embarque": null,
-      "regiao_embarque": "Brasília"
+      "regiao_embarque": "Santos Dumont - SDU",
+      "horario_embarque": "14h30",
+      "data_desembarque": null,
+      "regiao_desembarque": "Galeão - GIG",
+      "horario_desembarque": "9h30"
     }
-  ]
+  ],
+  "tipo_quarto": "DUPLO",
+  "preferencia_cama": "CASAL",
+  "divisao_pagamento": false,
+  "quantidade_parcelas": 4,
+  "valor_total": 9760
 }
 ```
 
-Regras estruturais do payload:
+Os campos `idade_evento`, `categoria`, `valor_individual` e `valor_total` enviados
+pelo cliente não são confiados. O backend sempre os recalcula usando a data de
+check-in de `27/04/2027` e rejeita a requisição quando `valor_total` diverge.
 
-- `clientes` deve ser um array não vazio;
-- o primeiro cliente é tratado como responsável/anfitrião;
-- os demais clientes são tratados como convidados;
-- `criancas` é um array opcional;
-- `transfer` deve ser um array com exatamente um item;
-- `data_embarque`, `horario_embarque` e `tipo_quarto` são opcionais;
-- `divisao_pagamento` aceita booleano ou as strings `"true"` e `"false"`;
-- quando `enviou_convite` for verdadeiro, `nome_convidado`, `cpf_convidado` e `email_convidado` são obrigatórios;
-- os dados de empresa não são repetidos em cada cliente.
+#### Exemplo de sucesso
 
-O fluxo aceita exatamente um item em `transfer`. Por requisição, empresa,
-convite e pedido geram no máximo um registro. Clientes e crianças seguem a
-quantidade de itens das respectivas listas; parcelas seguem a quantidade de
-clientes multiplicada por `quantidade_parcelas`.
+```json
+{
+  "sucess": true,
+  "success": true,
+  "mensagem": "Cliente cadastrado com sucesso",
+  "id_pedido": "8974164191",
+  "pedido_origem": null
+}
+```
 
-`pedido_origem` e `cnpj_convidado` são aceitos no payload, mas ainda não são
-persistidos porque o esquema atual não possui colunas correspondentes em
-`EV_PEDIDOS` ou `EV_REGISTRO_CONVITES`.
+O campo legado `sucess` é mantido por compatibilidade. Novos consumidores podem
+usar `success`.
+
+#### Validações
+
+- o backend fixa temporariamente `nome_evento` como `teste`; qualquer outro valor enviado é ignorado;
+- CNPJ deve conter 14 dígitos e CEP deve conter 8 dígitos;
+- CPF deve conter 11 dígitos e passar na validação dos dígitos verificadores;
+- e-mails devem possuir formato válido;
+- telefone deve conter somente números e no máximo 12 dígitos;
+- `quantidade_parcelas` deve ser um inteiro entre 1 e 8;
+- `valor_total` deve ser positivo e igual ao total recalculado;
+- `tipo_quarto` aceita somente `SINGLE`, `DUPLO` ou `TRIPLO`;
+- `preferencia_cama` é obrigatória, normalizada em maiúsculas e aceita até 30 caracteres;
+- `divisao_pagamento`, `enviou_convite` e `participa_auditorio` são booleanos;
+- `transfer` deve possuir exatamente um registro; as datas podem ser `null`;
+- são permitidas no máximo duas crianças;
+- CPFs não podem se repetir entre clientes e crianças.
+
+Exemplo de erro de validação:
+
+```json
+{
+  "erro": true,
+  "mensagem": "O quarto DUPLO deve possuir exatamente 2 cliente(s) adulto(s)"
+}
+```
+
+Exemplo de divergência financeira:
+
+```json
+{
+  "erro": true,
+  "mensagem": "O valor_total informado diverge do valor calculado pelo backend: R$ 9760.00"
+}
+```
+
+#### Hospedagem, idade e cobrança
+
+- `SINGLE` exige exatamente um cliente adulto;
+- `DUPLO` exige exatamente dois clientes adultos;
+- `TRIPLO` exige exatamente três clientes adultos;
+- crianças não substituem os adultos exigidos pela ocupação;
+- adulto em `SINGLE`: R$ 5.680,00;
+- adulto em `DUPLO` ou `TRIPLO`: R$ 3.848,00;
+- criança de 0 a 3 anos: R$ 0,00;
+- criança de 4 a 11 anos: R$ 2.064,00;
+- participante com 12 anos ou mais recebe categoria e valor de adulto.
+
+Quando `divisao_pagamento=false`, todas as parcelas são geradas somente para o
+CPF de `clientes[0]`. Quando `divisao_pagamento=true`, cada cliente recebe suas
+próprias parcelas e o valor das crianças é somado ao primeiro cliente. Os
+cálculos são feitos em centavos e a diferença de arredondamento é aplicada à
+última parcela.
+
+#### Preparação do banco
+
+A migration `supabase/migrations/20260918143846_cadastro_evento_atomico.sql`
+adiciona somente as colunas ausentes e cria a função transacional
+`GIRAFFAS_HOMOLOG.cadastrar_evento(jsonb)`. A migration foi aplicada no ambiente
+de homologação em 18/09/2026. Para outros ambientes, aplique o mesmo arquivo
+antes de disponibilizar a rota. Confirme também que `SUPABASE_KEY` no backend é
+uma chave secreta de servidor (`sb_secret_`) ou uma chave legada
+`service_role`. Essa chave deve permanecer exclusivamente no servidor.
+
+A migration `supabase/migrations/20260921143535_add_evento_hospedagem_fields.sql`
+acrescenta `preferencia_cama` e `valor_total` em `EV_PEDIDOS`, garante as colunas
+de hospedagem e pagamento e atualiza a função transacional para persistir esses
+campos. A rota principal é `/hooks/cadastroevento`; `/hooks/cadastro` permanece
+como alias para consumidores existentes.
 
 ### Resgatar convite
 

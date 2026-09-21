@@ -13,7 +13,15 @@ if(!port) {
 
 const app = express()
 
-app.use(cors())
+app.use(cors({
+  origin: [
+    'https://convencoesgiraffas.com.br',
+    'https://www.convencao2027.giraffas.com.br',
+   ' https://hml-convencao.giraffas.com.br',
+   'http://localhost:4200'
+  ],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
+}));
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }));
 app.use(router)
