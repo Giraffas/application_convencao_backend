@@ -33,7 +33,7 @@ O fluxo principal de cadastro persiste dados em várias tabelas do Supabase:
 1. valida a antecedência do evento;
 2. gera um código de pedido de dez dígitos;
 3. cadastra a empresa;
-4. cadastra anfitrião e convidados;
+4. cadastra o responsável e seus acompanhantes;
 5. registra crianças vinculadas ao responsável;
 6. cria pedidos para os participantes;
 7. gera as parcelas de pagamento.
@@ -61,8 +61,13 @@ backend/
 │   └── liberar_tabelas_giraffas_homolog.sql
 ├── functions/              # Funções auxiliares
 ├── hooks/                  # Orquestração dos fluxos de negócio
+├── middleware/             # Validação dos tokens JWT
 ├── routes/
 │   └── router.js           # Registro das rotas HTTP
+├── supabase/migrations/    # Evolução versionada do banco
+├── tests/                  # Testes automatizados
+├── Dockerfile
+├── compose.yml
 ├── server.js               # Inicialização do Express
 ├── package.json
 └── README.md
@@ -71,10 +76,11 @@ backend/
 ### Responsabilidades por camada
 
 - `server.js`: configura CORS, parsing JSON/URL-encoded e registra o router.
-- `routes/router.js`: associa método e caminho HTTP a controllers ou hooks.
+- `routes/router.js`: associa método e caminho HTTP a controllers ou hooks e separa as rotas públicas das protegidas.
+- `middleware/authMidlleware.js`: valida o Bearer token das rotas protegidas.
 - `hooks/`: valida payloads e coordena operações compostas.
 - `controllers/`: executa uma consulta ou mutação específica no Supabase.
-- `functions/`: contém regras auxiliares, como datas, parcelas, código do pedido e JWT.
+- `functions/`: contém regras auxiliares, como datas, parcelas, código do pedido, JWT e preparação do cadastro.
 - `database/supabase.js`: cria o cliente a partir de `SUPABASE_URL` e `SUPABASE_KEY`.
 
 ## Configuração local
@@ -131,6 +137,18 @@ Com `SERVER_PORT=5000`, a URL local é:
 ```text
 http://179.198.123.120:5000
 ```
+
+### Testes automatizados
+
+Execute a suíte com o test runner nativo do Node.js:
+
+```bash
+npm test
+```
+
+Os testes em `tests/cadastroEvento.test.js` cobrem a preparação do cadastro,
+incluindo ocupação dos quartos, acompanhantes, crianças, valores fixos, divisão
+de parcelas e detecção de CPFs duplicados.
 
 ## Deploy com Docker Compose
 
@@ -204,6 +222,7 @@ Todas as consultas utilizam o schema definido por `AMBIENT`.
 | Relação | Responsabilidade |
 | --- | --- |
 | `EV_CADASTRO_CLIENTES` | Dados de anfitriões e convidados |
+| `EV_ACOMPANHANTES` | Acompanhantes vinculados ao anfitrião e ao pedido |
 | `EV_CADASTRO_CNPJ` | Cadastro de empresas |
 | `EV_CADASTRO_CRIANCA` | Crianças vinculadas a um responsável |
 | `EV_CADASTRO_QUARTOS` | Cadastro de quartos; atualmente não há endpoint implementado |
@@ -237,11 +256,33 @@ Dois endpoints geram tokens:
 - `POST /posts/auth/loginaadministrator`;
 - `POST /posts/consultas/consultainscricao`.
 
-### Estado atual
+### Utilização do token
 
-As rotas ainda não possuem middleware de validação JWT. Portanto, embora tokens sejam emitidos, os endpoints administrativos e de participante não exigem atualmente `Authorization: Bearer <token>`.
+O middleware JWT é aplicado em `routes/router.js`. Envie o token nas rotas protegidas usando exatamente este formato:
 
-Antes de produção, implemente um middleware que execute `jwt.verify()` validando algoritmo, emissor e audiência, e aplique autorização por perfil. Não confie somente no CPF ou e-mail enviados no corpo da requisição para determinar a propriedade de um pedido.
+```http
+Authorization: Bearer SEU_TOKEN
+```
+
+Exemplo:
+
+```bash
+curl -H "Authorization: Bearer SEU_TOKEN" \
+  http://179.198.123.120:5000/sellers/all/sellersall
+```
+
+O middleware atual valida a assinatura e a expiração com `JWT_SECRET`. Os claims `issuer`, `audience` e `algorithm` são definidos na geração, mas ainda não são informados explicitamente como restrições no `jwt.verify()`.
+
+### Rotas públicas
+
+As seguintes rotas são registradas antes do middleware:
+
+- `POST /posts/auth/loginaadministrator`;
+- `POST /hooks/autocompletecnpj`;
+- `POST /posts/consultas/consultainscricao`;
+- `POST /hooks/cadastro`.
+
+Todas as rotas declaradas depois de `router.use(authMiddleware)` exigem Bearer token. Isso inclui o alias `POST /hooks/cadastroevento`.
 
 ## Convenções da API
 
@@ -299,12 +340,15 @@ Algumas respostas incluem `msg_erro` com detalhes do Supabase. Não exponha deta
 | POST | `/posts/orders/modify/ordercheckingcheckou` | Atualiza informações de embarque |
 | POST | `/posts/payments/administrator/check` | Marca parcela como paga |
 | POST | `/posts/orders/functions/reactiveOrder` | Reativa a presença de um participante |
+| POST | `/orders/filterorder/getorder` | Consulta pedidos por CPF |
 | POST | `/hooks/autocompletecnpj` | Localiza empresa por CNPJ |
 | POST | `/hooks/cancelaParticipacao` | Cancela pedido e presença |
 | POST | `/hooks/alteraCheckout` | Altera data de saída |
 | POST | `/hooks/alteraChecking` | Altera data de embarque |
 | POST | `/hooks/cadastro` | Executa cadastro completo |
+| POST | `/hooks/cadastroevento` | Alias protegido do cadastro completo |
 | POST | `/hooks/resgateconvite` | Resgata convite e vincula empresa |
+| POST | `/hooks/orders/reactiveorders` | Reativa pedido e inscrição |
 
 > O caminho `paymanets` contém a grafia presente no código e deve ser usado dessa forma até que uma mudança versionada seja realizada.
 
@@ -451,6 +495,7 @@ integral.
   "nome_evento": "encontro_franqueados_2027",
   "clientes": [
     {
+      "nome_evento": "encontro_franqueados_2027",
       "nome": "Felipe Barbosa",
       "nome_cracha": "Felipe",
       "cpf": "52998224725",
@@ -462,7 +507,11 @@ integral.
       "participa_auditorio": true,
       "idade_evento": 31,
       "categoria": "Adulto",
-      "valor_individual": 3848
+      "valor_individual": 3848,
+      "nome_acompanhante_quarto_duplo": null,
+      "telefone_acompanhante_quarto_duplo": null,
+      "nome_acompanhante_quarto_triplo": null,
+      "telefone_acompanhante_quarto_triplo": null
     }
   ],
   "acompanhantes": [
@@ -556,6 +605,8 @@ usar `success`.
 - `tipo_quarto` aceita somente `SINGLE`, `DUPLO` ou `TRIPLO`;
 - a ocupação do quarto considera a soma das listas `clientes` e `acompanhantes`;
 - os registros de `acompanhantes` são gravados em `EV_ACOMPANHANTES` e associados por `cpf_anfitriao` e `id_pedido`;
+- `cpf_anfitriao` é definido pelo backend com o CPF de `clientes[0]`, independentemente do valor recebido no acompanhante;
+- quando `divisao_pagamento=true`, nome e telefone são os únicos campos obrigatórios do primeiro participante secundário; os campos opcionais são validados quando informados;
 - `tipo_cama` é persistido em `EV_PEDIDOS`; quando omitido, utiliza `preferencia_cama`;
 - `preferencia_cama` é obrigatória, normalizada em maiúsculas e aceita até 30 caracteres;
 - `divisao_pagamento`, `enviou_convite` e `participa_auditorio` são booleanos;
@@ -603,8 +654,8 @@ uma chave secreta de servidor (`sb_secret_`) ou uma chave legada
 A migration `supabase/migrations/20260921143535_add_evento_hospedagem_fields.sql`
 acrescenta `preferencia_cama` e `valor_total` em `EV_PEDIDOS`, garante as colunas
 de hospedagem e pagamento e atualiza a função transacional para persistir esses
-campos. A rota principal é `/hooks/cadastroevento`; `/hooks/cadastro` permanece
-como alias para consumidores existentes.
+campos. As rotas `/hooks/cadastro` e `/hooks/cadastroevento` chamam o mesmo hook;
+a primeira é pública e a segunda está posicionada depois do middleware JWT.
 
 A migration `supabase/migrations/20260921200147_adicionar_acompanhantes_evento.sql`
 adapta a tabela `EV_ACOMPANHANTES`, adiciona `tipo_cama` em `EV_PEDIDOS` e
@@ -692,9 +743,11 @@ Atualmente a função usa diferença absoluta (`Math.abs`). Isso significa que u
 ### Parcelamento
 
 - cada parcela inicia com `parcela_paga=false`;
-- o anfitrião recebe `parcela_valida=true`;
-- convidados recebem `parcela_valida=false` até o resgate;
-- quando `enviou_convite=true`, o valor total é dividido inicialmente por dois e depois pela quantidade de parcelas;
+- quando não há divisão, todas as parcelas ficam vinculadas ao CPF de `clientes[0]`;
+- quando há divisão, cada cliente e acompanhante recebe parcelas sobre seu valor individual;
+- o valor das crianças é somado às parcelas do responsável;
+- a primeira pessoa recebe `parcela_valida=true` e os demais participantes recebem `false`;
+- a diferença de arredondamento é aplicada à última parcela;
 - valores monetários devem ser armazenados em `numeric`, e não em `smallint` ou ponto flutuante.
 
 ### Cancelamento e reativação
@@ -718,32 +771,27 @@ Atualmente a função usa diferença absoluta (`Math.abs`). Isso significa que u
 
 Os itens abaixo foram identificados diretamente no código atual:
 
-1. Não existe middleware JWT aplicado no router.
-2. Login e consulta de inscrição tratam `data` como objeto em alguns pontos, embora o Supabase retorne array sem `.single()`/`.maybeSingle()`.
-3. A senha administrativa é comparada diretamente no banco; não há hash de senha.
-4. Vários handlers enviam `res.status(...).json(...)` sem `return`, o que pode gerar `ERR_HTTP_HEADERS_SENT`.
-5. O cadastro contém chamadas `res.status(...).jsos(...)`, que deveriam ser `.json(...)`.
-6. `POST_insertPedidos.js` carrega `.ven` em vez de `.env`.
-7. `postResgataConvite()` referencia `res` sem recebê-lo como parâmetro no caminho de erro.
-8. `postInsertCrianca()` não retorna `true` no caminho de sucesso.
-9. As consultas de clientes ativos e inativos não enviam resposta de sucesso após encontrar dados.
-10. O hook de alteração de checking passa `nome` para um controller que filtra a coluna `cpf`.
-11. Alguns updates usam apenas CPF/e-mail e podem modificar vários pedidos do mesmo participante.
-12. Cadastro, cancelamento e resgate executam várias mutações sem transação; uma falha intermediária pode deixar dados parcialmente gravados.
-13. `calculaData()` usa diferença absoluta e não rejeita eventos passados.
-14. Não há suíte automatizada de testes nem scripts de lint, format ou test no `package.json`.
-15. O carregamento de `.env` é repetido em quase todos os módulos, em vez de ocorrer apenas no bootstrap.
-16. Há imports não utilizados de APIs internas do Supabase em alguns controllers.
+1. Login e consulta de inscrição ainda tratam o retorno em array como objeto ao gerar o token; isso pode produzir `sub="undefined"`.
+2. A senha administrativa é comparada diretamente no banco; não há hash de senha.
+3. Vários handlers antigos enviam `res.status(...).json(...)` sem `return`, o que pode gerar `ERR_HTTP_HEADERS_SENT`.
+4. As consultas de clientes ativos e inativos não enviam resposta de sucesso após encontrar dados.
+5. Alguns updates usam apenas CPF/e-mail e podem modificar vários pedidos do mesmo participante.
+6. A confirmação de parcela usa CPF e número da parcela, sem filtrar `id_pedido`.
+7. O cadastro completo é transacional, mas cancelamento, reativação e resgate de convite ainda executam mutações separadas.
+8. `calculaData()` usa diferença absoluta e não rejeita explicitamente eventos passados.
+9. O middleware verifica assinatura e expiração, mas não restringe explicitamente emissor, audiência e algoritmo.
+10. O carregamento de `.env` é repetido em diversos módulos, em vez de ocorrer apenas no bootstrap.
+11. Há imports não utilizados de APIs internas do Supabase em alguns controllers.
+12. Não existem scripts de lint e formatação no `package.json`.
 
 ### Prioridade recomendada
 
-1. corrigir retornos HTTP e falhas de execução;
-2. implementar autenticação/autorização e hash de senha;
-3. tornar os fluxos compostos transacionais;
+1. corrigir retornos HTTP e a geração dos claims JWT;
+2. adicionar autorização por perfil e hash de senha;
+3. tornar os demais fluxos compostos transacionais;
 4. restringir updates por `id_pedido` e identidade autenticada;
-5. adicionar validação de schema do payload;
-6. criar testes unitários e de integração;
-7. padronizar nomes de rotas e respostas em uma versão nova da API.
+5. ampliar os testes de integração das rotas;
+6. padronizar nomes de rotas e respostas em uma versão nova da API.
 
 ## Solução de problemas
 
