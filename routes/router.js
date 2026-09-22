@@ -20,7 +20,7 @@ import postAtualizaPedidos from "../controllers/POST_atualizaPedido.js";
 import postBaixaParcela from "../controllers/POST_baixaParcela.js";
 import postReactiveInscricaoRoute from '../controllers/POST_cancelaReservaRoute.js'
 import postResgataPedido from '../controllers/POST_resgataPedido.js'
-
+import postValidaCnpj from "../controllers/POST_validaCnpj.js";
 //GET
 import getConsultaParcelas from '../controllers/GET_consultaParcelas.js'
 import getClientesAtivos from "../controllers/GET_clientesAtivos.js";
@@ -35,7 +35,7 @@ router.post('/posts/auth/loginaadministrator', login)
 router.post('/hooks/autocompletecnpj', hookAutocompleteCnpj)
 router.post('/posts/consultas/consultainscricao', postConsultaInscricao)
 router.post('/hooks/cadastro', hookCadastro)
-
+router.post('/post/sellers/validasellers',postValidaCnpj)
 router.use(authMiddleware)
 
 router.get('/orders/paymanets/listpayments', getConsultaParcelas)
@@ -53,13 +53,5 @@ router.post('/hooks/alteraChecking', hookAlteraChecking)
 router.post('/hooks/cadastroevento', hookCadastro)
 router.post('/hooks/resgateconvite', hookConfirmaConvite)
 router.post('/hooks/orders/reactiveorders', hookReativaPedido)
-
-
-
-
-
-
-
-//Hooks
 
 export default router
