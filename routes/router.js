@@ -1,6 +1,8 @@
 // LIBS
 import { Router } from "express";
 
+//MIDLLEWARE
+import authMiddleware from '../middleware/authMidlleware.js'
 
 //HOOKS
 import hookAutocompleteCnpj from "../hooks/autocompleteCnpj.js";
@@ -29,31 +31,35 @@ import getClientes from '../controllers/GET_clientes.js'
 const router = Router()
 console.log('Router aitvo')
 
-//GET
+router.post('/posts/auth/loginaadministrator', login)
+router.post('/hooks/autocompletecnpj', hookAutocompleteCnpj)
+router.post('/posts/consultas/consultainscricao', postConsultaInscricao)
+router.post('/hooks/cadastro', hookCadastro)
+
+router.use(authMiddleware)
+
 router.get('/orders/paymanets/listpayments', getConsultaParcelas)
 router.get('/sellers/active/sellersactive', getClientesAtivos)
 router.get('/sellers/inactive/sellersinactive', getClientesInativos)
 router.get('/events/date/dateevent', getRouterDataEvento)
 router.get('/sellers/all/sellersall', getClientes)
-
-
-//POST
-router.post('/posts/consultas/consultainscricao', postConsultaInscricao)
-router.post('/posts/auth/loginaadministrator', login)
 router.post('/posts/orders/modify/ordercheckingcheckou', postAtualizaPedidos)
 router.post('/posts/payments/administrator/check', postBaixaParcela)
 router.post('/posts/orders/functions/reactiveOrder', postReactiveInscricaoRoute)
 router.post('/orders/filterorder/getorder', postResgataPedido)
-
-
-//Hooks
-router.post('/hooks/autocompletecnpj', hookAutocompleteCnpj)
 router.post('/hooks/cancelaParticipacao', hookCancelaParticipacao)
 router.post('/hooks/alteraCheckout', hookAlteraCheckout)
 router.post('/hooks/alteraChecking', hookAlteraChecking)
-router.post('/hooks/cadastro', hookCadastro)
 router.post('/hooks/cadastroevento', hookCadastro)
 router.post('/hooks/resgateconvite', hookConfirmaConvite)
 router.post('/hooks/orders/reactiveorders', hookReativaPedido)
+
+
+
+
+
+
+
+//Hooks
 
 export default router

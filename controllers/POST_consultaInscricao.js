@@ -105,7 +105,7 @@ export default async function postConsultaInscricao(req, res) {
                 sucess: true,
                 mensagem: 'usuario encontrado no sistema',
                 token: token,
-                order: data[0]
+                order:  [0]
             })
     }
     catch(err) {

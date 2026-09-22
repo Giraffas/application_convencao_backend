@@ -341,7 +341,7 @@ A consulta aplica correspondência exata a todos os campos. Quando encontra o ca
 
 ```json
 {
-  "nome_evento": "teste",
+  "nome_evento": "encontro_franqueados_2027",
   "filtros": {
     "cpf": "12345678901",
     "email": "felipe@email.com"
@@ -397,7 +397,7 @@ Atualiza `presenca_cancelada` para `false` em `EV_CADASTRO_CLIENTES`.
 
 ```json
 {
-  "nome_evento": "teste",
+  "nome_evento": "encontro_franqueados_2027",
   "cpf": "12345678901",
   "email": "felipe@email.com"
 }
@@ -411,7 +411,7 @@ Marca `pedido_ativo=false` em `EV_PEDIDOS` e `presenca_cancelada=true` em `EV_CA
 
 ```json
 {
-  "nome_evento": "teste",
+  "nome_evento": "encontro_franqueados_2027",
   "cpf": "12345678901",
   "email": "felipe@email.com",
   "nova_data": "2026-11-15"
@@ -426,7 +426,7 @@ Atualiza `data_saida` em `EV_PEDIDOS`.
 
 ```json
 {
-  "nome_evento": "teste",
+  "nome_evento": "encontro_franqueados_2027",
   "nome": "Felipe Barbosa",
   "email": "felipe@email.com",
   "nova_data": "2026-11-10"
@@ -440,14 +440,15 @@ O hook atualmente recebe `nome`, mas o controller utiliza o primeiro argumento c
 `POST /hooks/cadastro`
 
 O cadastro é validado e recalculado pelo backend e depois enviado para uma única
-função PostgreSQL. Empresa, clientes, crianças, pedido, transfer e parcelas são
-gravados na mesma transação. Qualquer falha provoca rollback integral.
+função PostgreSQL. Empresa, clientes, acompanhantes, crianças, pedido, transfer
+e parcelas são gravados na mesma transação. Qualquer falha provoca rollback
+integral.
 
 #### Exemplo de request
 
 ```json
 {
-  "nome_evento": "teste",
+  "nome_evento": "encontro_franqueados_2027",
   "clientes": [
     {
       "nome": "Felipe Barbosa",
@@ -462,8 +463,11 @@ gravados na mesma transação. Qualquer falha provoca rollback integral.
       "idade_evento": 31,
       "categoria": "Adulto",
       "valor_individual": 3848
-    },
+    }
+  ],
+  "acompanhantes": [
     {
+      "nome_evento": "encontro_franqueados_2027",
       "nome": "Maria Oliveira",
       "nome_cracha": "Maria",
       "cpf": "11144477735",
@@ -471,11 +475,12 @@ gravados na mesma transação. Qualquer falha provoca rollback integral.
       "data_nascimento": "1993-08-15",
       "telefone": "61988888888",
       "tm_camiseta": "P",
-      "tm_chinelo": "35/36",
-      "participa_auditorio": false,
+      "tm_chinelo": "37/38",
+      "participa_auditorio": true,
       "idade_evento": 33,
       "categoria": "Adulto",
-      "valor_individual": 3848
+      "valor_individual": 3848,
+      "cpf_anfitriao": "52998224725"
     }
   ],
   "criancas": [
@@ -511,6 +516,7 @@ gravados na mesma transação. Qualquer falha provoca rollback integral.
     }
   ],
   "tipo_quarto": "DUPLO",
+  "tipo_cama": "CASAL",
   "preferencia_cama": "CASAL",
   "divisao_pagamento": false,
   "quantidade_parcelas": 4,
@@ -520,7 +526,8 @@ gravados na mesma transação. Qualquer falha provoca rollback integral.
 
 Os campos `idade_evento`, `categoria`, `valor_individual` e `valor_total` enviados
 pelo cliente não são confiados. O backend sempre os recalcula usando a data de
-check-in de `27/04/2027` e rejeita a requisição quando `valor_total` diverge.
+check-in de `27/04/2027`. O campo `valor_total` recebido é opcional e ignorado;
+o valor persistido é sempre o total calculado pelo backend.
 
 #### Exemplo de sucesso
 
@@ -539,43 +546,37 @@ usar `success`.
 
 #### Validações
 
-- o backend fixa temporariamente `nome_evento` como `teste`; qualquer outro valor enviado é ignorado;
+- o backend fixa temporariamente `nome_evento` como `encontro_franqueados_2027`; qualquer outro valor enviado é ignorado;
 - CNPJ deve conter 14 dígitos e CEP deve conter 8 dígitos;
 - CPF deve conter 11 dígitos e passar na validação dos dígitos verificadores;
 - e-mails devem possuir formato válido;
 - telefone deve conter somente números e no máximo 12 dígitos;
 - `quantidade_parcelas` deve ser um inteiro entre 1 e 8;
-- `valor_total` deve ser positivo e igual ao total recalculado;
+- `valor_total` recebido é opcional e ignorado; o backend calcula o total usando os valores fixos;
 - `tipo_quarto` aceita somente `SINGLE`, `DUPLO` ou `TRIPLO`;
+- a ocupação do quarto considera a soma das listas `clientes` e `acompanhantes`;
+- os registros de `acompanhantes` são gravados em `EV_ACOMPANHANTES` e associados por `cpf_anfitriao` e `id_pedido`;
+- `tipo_cama` é persistido em `EV_PEDIDOS`; quando omitido, utiliza `preferencia_cama`;
 - `preferencia_cama` é obrigatória, normalizada em maiúsculas e aceita até 30 caracteres;
 - `divisao_pagamento`, `enviou_convite` e `participa_auditorio` são booleanos;
 - `transfer` deve possuir exatamente um registro; as datas podem ser `null`;
 - são permitidas no máximo duas crianças;
-- CPFs não podem se repetir entre clientes e crianças.
+- CPFs não podem se repetir entre clientes, acompanhantes e crianças.
 
 Exemplo de erro de validação:
 
 ```json
 {
   "erro": true,
-  "mensagem": "O quarto DUPLO deve possuir exatamente 2 cliente(s) adulto(s)"
-}
-```
-
-Exemplo de divergência financeira:
-
-```json
-{
-  "erro": true,
-  "mensagem": "O valor_total informado diverge do valor calculado pelo backend: R$ 9760.00"
+  "mensagem": "O quarto DUPLO deve possuir exatamente 2 participante(s) adulto(s) entre clientes e acompanhantes"
 }
 ```
 
 #### Hospedagem, idade e cobrança
 
-- `SINGLE` exige exatamente um cliente adulto;
-- `DUPLO` exige exatamente dois clientes adultos;
-- `TRIPLO` exige exatamente três clientes adultos;
+- `SINGLE` exige exatamente um participante adulto;
+- `DUPLO` exige exatamente dois participantes adultos;
+- `TRIPLO` exige exatamente três participantes adultos;
 - crianças não substituem os adultos exigidos pela ocupação;
 - adulto em `SINGLE`: R$ 5.680,00;
 - adulto em `DUPLO` ou `TRIPLO`: R$ 3.848,00;
@@ -584,10 +585,10 @@ Exemplo de divergência financeira:
 - participante com 12 anos ou mais recebe categoria e valor de adulto.
 
 Quando `divisao_pagamento=false`, todas as parcelas são geradas somente para o
-CPF de `clientes[0]`. Quando `divisao_pagamento=true`, cada cliente recebe suas
-próprias parcelas e o valor das crianças é somado ao primeiro cliente. Os
-cálculos são feitos em centavos e a diferença de arredondamento é aplicada à
-última parcela.
+CPF de `clientes[0]`. Quando `divisao_pagamento=true`, cada cliente e
+acompanhante recebe suas próprias parcelas e o valor das crianças é somado ao
+primeiro cliente. Os cálculos são feitos em centavos e a diferença de
+arredondamento é aplicada à última parcela.
 
 #### Preparação do banco
 
@@ -605,13 +606,18 @@ de hospedagem e pagamento e atualiza a função transacional para persistir esse
 campos. A rota principal é `/hooks/cadastroevento`; `/hooks/cadastro` permanece
 como alias para consumidores existentes.
 
+A migration `supabase/migrations/20260921200147_adicionar_acompanhantes_evento.sql`
+adapta a tabela `EV_ACOMPANHANTES`, adiciona `tipo_cama` em `EV_PEDIDOS` e
+atualiza a função transacional para gravar a lista `acompanhantes`. A migration
+foi aplicada no ambiente de homologação em 21/09/2026.
+
 ### Resgatar convite
 
 `POST /hooks/resgateconvite`
 
 ```json
 {
-  "nome_evento": "teste",
+  "nome_evento": "encontro_franqueados_2027",
   "cpf": "98765432100",
   "email_convidado": "maria@email.com",
   "email_anfitriao": "felipe@email.com",
@@ -643,7 +649,8 @@ requisição
   -> valida evento e antecedência
   -> gera id_pedido único
   -> cadastra empresa
-  -> cadastra anfitrião e convidados
+  -> cadastra anfitrião
+  -> cadastra acompanhantes
   -> registra convites
   -> cadastra crianças
   -> cria pedidos

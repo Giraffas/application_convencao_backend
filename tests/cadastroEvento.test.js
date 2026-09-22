@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import {
   ErroValidacaoCadastro,
+  NOME_EVENTO_ATIVO,
   calcularIdadeNaData,
   dividirEmParcelas,
   prepararCadastro,
@@ -33,13 +34,24 @@ function cliente(indice) {
   };
 }
 
+function acompanhante(indice) {
+  return {
+    ...cliente(indice + 1),
+    cpf_anfitriao: cpfsValidos[0],
+  };
+}
+
 function payloadBase(tipoQuarto = "SINGLE") {
   const ocupacao = { SINGLE: 1, DUPLO: 2, TRIPLO: 3 }[tipoQuarto];
   const valorTotal = tipoQuarto === "SINGLE" ? 5680 : 3848 * ocupacao;
 
   return {
     nome_evento: "Convencao Giraffas 2027",
-    clientes: Array.from({ length: ocupacao }, (_, indice) => cliente(indice)),
+    clientes: [cliente(0)],
+    acompanhantes: Array.from(
+      { length: ocupacao - 1 },
+      (_, indice) => acompanhante(indice),
+    ),
     criancas: [],
     cnpj: "11222333000181",
     razao_social: "Empresa Teste LTDA",
@@ -86,14 +98,28 @@ test("aceita SINGLE com um participante", () => {
   const cadastro = prepararCadastro(payloadBase("SINGLE"));
   assert.equal(cadastro.clientes.length, 1);
   assert.equal(cadastro.clientes[0].valor_individual, 5680);
-  assert.equal(cadastro.nome_evento, "teste");
+  assert.equal(NOME_EVENTO_ATIVO, "encontro_franqueados_2027");
+  assert.equal(cadastro.nome_evento, NOME_EVENTO_ATIVO);
 });
 
 test("aceita DUPLO com dois participantes", () => {
   const cadastro = prepararCadastro(payloadBase("DUPLO"));
-  assert.equal(cadastro.clientes.length, 2);
+  assert.equal(cadastro.clientes.length, 1);
+  assert.equal(cadastro.acompanhantes.length, 1);
+  assert.equal(cadastro.acompanhantes[0].cpf_anfitriao, cadastro.clientes[0].cpf);
   assert.equal(cadastro.valor_total, 7696);
+  assert.equal(cadastro.tipo_cama, "CASAL");
   assert.equal(cadastro.preferencia_cama, "CASAL");
+});
+
+test("ignora valor_total recebido e mantém o cálculo fixo do backend", () => {
+  const valorIncorreto = payloadBase("DUPLO");
+  valorIncorreto.valor_total = 1;
+  assert.equal(prepararCadastro(valorIncorreto).valor_total, 7696);
+
+  const semValor = payloadBase("DUPLO");
+  delete semValor.valor_total;
+  assert.equal(prepararCadastro(semValor).valor_total, 7696);
 });
 
 test("normaliza preferencia_cama e rejeita valor vazio", () => {
@@ -107,7 +133,8 @@ test("normaliza preferencia_cama e rejeita valor vazio", () => {
 
 test("aceita TRIPLO com três participantes", () => {
   const cadastro = prepararCadastro(payloadBase("TRIPLO"));
-  assert.equal(cadastro.clientes.length, 3);
+  assert.equal(cadastro.clientes.length, 1);
+  assert.equal(cadastro.acompanhantes.length, 2);
   assert.equal(cadastro.valor_total, 11544);
 });
 
@@ -126,7 +153,7 @@ test("aceita até duas crianças e recalcula os valores", () => {
 
 test("rejeita quarto com quantidade incorreta de adultos", () => {
   const payload = payloadBase("DUPLO");
-  payload.clientes.pop();
+  payload.acompanhantes.pop();
   assert.throws(() => prepararCadastro(payload), ErroValidacaoCadastro);
 });
 
@@ -138,7 +165,7 @@ test("rejeita CPF repetido entre cliente e criança", () => {
   payload.valor_total = 7744;
   assert.throws(
     () => prepararCadastro(payload),
-    /CPFs duplicados entre clientes e crianças/,
+    /CPFs duplicados entre clientes, acompanhantes e crianças/,
   );
 });
 
@@ -173,7 +200,7 @@ test("cobrança dividida atribui o valor das crianças ao responsável", () => {
     .filter((item) => item.cpf === payload.clientes[0].cpf)
     .reduce((total, item) => total + item.valor_parcela, 0);
   const totalAcompanhante = cadastro.parcelas
-    .filter((item) => item.cpf === payload.clientes[1].cpf)
+    .filter((item) => item.cpf === payload.acompanhantes[0].cpf)
     .reduce((total, item) => total + item.valor_parcela, 0);
 
   assert.equal(totalResponsavel, 5912);
@@ -181,16 +208,16 @@ test("cobrança dividida atribui o valor das crianças ao responsável", () => {
   assert.equal(cadastro.parcelas.length, 4);
 });
 
-test("divisão de pagamento exige somente nome e telefone do segundo cliente", () => {
+test("divisão de pagamento exige somente nome e telefone do acompanhante", () => {
   const payload = payloadBase("DUPLO");
   payload.divisao_pagamento = true;
-  payload.clientes[1] = {
+  payload.acompanhantes[0] = {
     nome: "Cliente da divisão",
     telefone: "61988888888",
   };
 
   const cadastro = prepararCadastro(payload);
-  const segundoCliente = cadastro.clientes[1];
+  const segundoCliente = cadastro.acompanhantes[0];
 
   assert.equal(segundoCliente.nome, "Cliente da divisão");
   assert.equal(segundoCliente.telefone, "61988888888");
@@ -204,16 +231,25 @@ test("divisão de pagamento exige somente nome e telefone do segundo cliente", (
   );
 });
 
-test("divisão de pagamento mantém nome e telefone obrigatórios no segundo cliente", () => {
+test("divisão de pagamento mantém nome e telefone obrigatórios no acompanhante", () => {
   const semNome = payloadBase("DUPLO");
   semNome.divisao_pagamento = true;
-  semNome.clientes[1] = { telefone: "61988888888" };
-  assert.throws(() => prepararCadastro(semNome), /clientes\[1\]\.nome/);
+  semNome.acompanhantes[0] = { telefone: "61988888888" };
+  assert.throws(() => prepararCadastro(semNome), /acompanhantes\[0\]\.nome/);
 
   const semTelefone = payloadBase("DUPLO");
   semTelefone.divisao_pagamento = true;
-  semTelefone.clientes[1] = { nome: "Cliente da divisão" };
-  assert.throws(() => prepararCadastro(semTelefone), /telefone.*clientes\[1\]/);
+  semTelefone.acompanhantes[0] = { nome: "Cliente da divisão" };
+  assert.throws(() => prepararCadastro(semTelefone), /telefone.*acompanhantes\[0\]/);
+});
+
+test("rejeita CPF repetido entre cliente e acompanhante", () => {
+  const payload = payloadBase("DUPLO");
+  payload.acompanhantes[0].cpf = payload.clientes[0].cpf;
+  assert.throws(
+    () => prepararCadastro(payload),
+    /CPFs duplicados entre clientes, acompanhantes e crianças/,
+  );
 });
 
 test("ajusta a diferença de arredondamento na última parcela", () => {

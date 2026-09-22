@@ -1,5 +1,5 @@
 export const DATA_CHECKIN_EVENTO = "2027-04-27";
-export const NOME_EVENTO_ATIVO = "teste";
+export const NOME_EVENTO_ATIVO = "encontro_franqueados_2027";
 
 const VALOR_ADULTO_SINGLE = 568_000;
 const VALOR_ADULTO_COMPARTILHADO = 384_800;
@@ -110,25 +110,6 @@ export function classificarParticipante(idade, tipoQuarto) {
   };
 }
 
-export function valorParaCentavos(valor, campo = "valor_total") {
-  const texto = String(valor ?? "").trim().replace(",", ".");
-  const correspondencia = /^(\d+)(?:\.(\d{1,2}))?$/.exec(texto);
-
-  if (!correspondencia) {
-    throw new ErroValidacaoCadastro(`O campo ${campo} deve ser um valor monetário válido`);
-  }
-
-  const reais = Number(correspondencia[1]);
-  const centavos = Number((correspondencia[2] ?? "").padEnd(2, "0"));
-  const total = reais * 100 + centavos;
-
-  if (!Number.isSafeInteger(total) || total <= 0) {
-    throw new ErroValidacaoCadastro(`O campo ${campo} deve ser positivo`);
-  }
-
-  return total;
-}
-
 export function centavosParaValor(centavos) {
   return Number((centavos / 100).toFixed(2));
 }
@@ -156,6 +137,90 @@ function validarContato({ cpf, email, telefone }, prefixo) {
       `O telefone informado em ${prefixo} deve conter somente números e no máximo 12 dígitos`,
     );
   }
+}
+
+function normalizarParticipanteAdulto(
+  participante,
+  prefixo,
+  tipoQuarto,
+  { dadosOpcionais = false } = {},
+) {
+  if (!participante || typeof participante !== "object" || Array.isArray(participante)) {
+    throw new ErroValidacaoCadastro(`O registro ${prefixo} é inválido`);
+  }
+
+  const nome = textoObrigatorio(participante.nome, `${prefixo}.nome`);
+  const telefone = String(participante.telefone ?? "");
+  if (!/^\d{1,12}$/.test(telefone)) {
+    throw new ErroValidacaoCadastro(
+      `O telefone informado em ${prefixo} deve conter somente números e no máximo 12 dígitos`,
+    );
+  }
+
+  const cpfInformado =
+    participante.cpf !== undefined && participante.cpf !== null && participante.cpf !== "";
+  const emailInformado =
+    participante.email !== undefined && participante.email !== null && participante.email !== "";
+  const nascimentoInformado =
+    participante.data_nascimento !== undefined &&
+    participante.data_nascimento !== null &&
+    participante.data_nascimento !== "";
+
+  if (dadosOpcionais) {
+    if (cpfInformado && !cpfValido(participante.cpf)) {
+      throw new ErroValidacaoCadastro(`O CPF informado em ${prefixo} é inválido`);
+    }
+    if (emailInformado && !emailValido(participante.email)) {
+      throw new ErroValidacaoCadastro(`O e-mail informado em ${prefixo} é inválido`);
+    }
+    if (
+      participante.participa_auditorio !== undefined &&
+      participante.participa_auditorio !== null &&
+      typeof participante.participa_auditorio !== "boolean"
+    ) {
+      throw new ErroValidacaoCadastro(
+        `O campo participa_auditorio de ${prefixo} deve ser booleano`,
+      );
+    }
+  } else {
+    textoObrigatorio(participante.data_nascimento, `${prefixo}.data_nascimento`);
+    validarContato(participante, prefixo);
+    if (typeof participante.participa_auditorio !== "boolean") {
+      throw new ErroValidacaoCadastro(
+        `O campo participa_auditorio de ${prefixo} deve ser booleano`,
+      );
+    }
+  }
+
+  let idadeEvento = null;
+  if (nascimentoInformado) {
+    idadeEvento = calcularIdadeNaData(participante.data_nascimento);
+    if (idadeEvento < 12) {
+      throw new ErroValidacaoCadastro(
+        `O participante ${prefixo} deve possuir 12 anos ou mais na data do evento`,
+      );
+    }
+  }
+
+  const classificacao = classificarParticipante(idadeEvento ?? 12, tipoQuarto);
+
+  return {
+    ...participante,
+    nome_evento: NOME_EVENTO_ATIVO,
+    nome,
+    nome_cracha: participante.nome_cracha ?? null,
+    cpf: cpfInformado ? String(participante.cpf) : null,
+    email: emailInformado ? participante.email : null,
+    data_nascimento: nascimentoInformado ? participante.data_nascimento : null,
+    telefone,
+    tm_camiseta: participante.tm_camiseta ?? null,
+    tm_chinelo: participante.tm_chinelo ?? null,
+    participa_auditorio: participante.participa_auditorio ?? null,
+    idade_evento: idadeEvento,
+    categoria: classificacao.categoria,
+    valor_individual: centavosParaValor(classificacao.valorCentavos),
+    valor_individual_centavos: classificacao.valorCentavos,
+  };
 }
 
 function criarParcelas(cpf, totalCentavos, quantidadeParcelas, parcelaValida) {
@@ -213,14 +278,19 @@ export function prepararCadastro(payload) {
   if (!Array.isArray(payload.clientes) || payload.clientes.length === 0) {
     throw new ErroValidacaoCadastro("Informe pelo menos um cliente");
   }
-  if (payload.clientes.length !== OCUPACAO_POR_QUARTO[tipoQuarto]) {
+  const acompanhantesOriginais = payload.acompanhantes ?? [];
+  if (!Array.isArray(acompanhantesOriginais)) {
+    throw new ErroValidacaoCadastro("O campo acompanhantes deve ser uma lista");
+  }
+  const quantidadeAdultos = payload.clientes.length + acompanhantesOriginais.length;
+  if (quantidadeAdultos !== OCUPACAO_POR_QUARTO[tipoQuarto]) {
     throw new ErroValidacaoCadastro(
-      `O quarto ${tipoQuarto} deve possuir exatamente ${OCUPACAO_POR_QUARTO[tipoQuarto]} cliente(s) adulto(s)`,
+      `O quarto ${tipoQuarto} deve possuir exatamente ${OCUPACAO_POR_QUARTO[tipoQuarto]} participante(s) adulto(s) entre clientes e acompanhantes`,
     );
   }
-  if (payload.divisao_pagamento && payload.clientes.length < 2) {
+  if (payload.divisao_pagamento && quantidadeAdultos < 2) {
     throw new ErroValidacaoCadastro(
-      "A divisão de pagamento exige um segundo cliente",
+      "A divisão de pagamento exige um segundo participante adulto",
     );
   }
 
@@ -232,108 +302,23 @@ export function prepararCadastro(payload) {
     throw new ErroValidacaoCadastro("O campo transfer deve possuir exatamente um registro");
   }
 
-  const clientes = payload.clientes.map((cliente, indice) => {
-    if (!cliente || typeof cliente !== "object" || Array.isArray(cliente)) {
-      throw new ErroValidacaoCadastro(`O registro clientes[${indice}] é inválido`);
-    }
-    const nome = textoObrigatorio(cliente.nome, `clientes[${indice}].nome`);
-    const telefone = String(cliente.telefone ?? "");
-    const segundoClienteDivisao = payload.divisao_pagamento && indice === 1;
-
-    if (!/^\d{1,12}$/.test(telefone)) {
-      throw new ErroValidacaoCadastro(
-        `O telefone informado em clientes[${indice}] deve conter somente números e no máximo 12 dígitos`,
-      );
-    }
-
-    if (segundoClienteDivisao) {
-      const cpfInformado = cliente.cpf !== undefined && cliente.cpf !== null && cliente.cpf !== "";
-      const emailInformado =
-        cliente.email !== undefined && cliente.email !== null && cliente.email !== "";
-      const nascimentoInformado =
-        cliente.data_nascimento !== undefined &&
-        cliente.data_nascimento !== null &&
-        cliente.data_nascimento !== "";
-
-      if (cpfInformado && !cpfValido(cliente.cpf)) {
-        throw new ErroValidacaoCadastro(
-          `O CPF informado em clientes[${indice}] é inválido`,
-        );
-      }
-      if (emailInformado && !emailValido(cliente.email)) {
-        throw new ErroValidacaoCadastro(
-          `O e-mail informado em clientes[${indice}] é inválido`,
-        );
-      }
-      if (
-        cliente.participa_auditorio !== undefined &&
-        cliente.participa_auditorio !== null &&
-        typeof cliente.participa_auditorio !== "boolean"
-      ) {
-        throw new ErroValidacaoCadastro(
-          `O campo participa_auditorio de clientes[${indice}] deve ser booleano`,
-        );
-      }
-
-      let idadeEvento = null;
-      if (nascimentoInformado) {
-        idadeEvento = calcularIdadeNaData(cliente.data_nascimento);
-        if (idadeEvento < 12) {
-          throw new ErroValidacaoCadastro(
-            `O participante clientes[${indice}] deve possuir 12 anos ou mais na data do evento`,
-          );
-        }
-      }
-
-      const classificacao = classificarParticipante(idadeEvento ?? 12, tipoQuarto);
-
-      return {
-        ...cliente,
-        nome,
-        nome_cracha: cliente.nome_cracha ?? null,
-        cpf: cpfInformado ? String(cliente.cpf) : null,
-        email: emailInformado ? cliente.email : null,
-        data_nascimento: nascimentoInformado ? cliente.data_nascimento : null,
-        telefone,
-        tm_camiseta: cliente.tm_camiseta ?? null,
-        tm_chinelo: cliente.tm_chinelo ?? null,
-        participa_auditorio: cliente.participa_auditorio ?? null,
-        idade_evento: idadeEvento,
-        categoria: classificacao.categoria,
-        valor_individual: centavosParaValor(classificacao.valorCentavos),
-        valor_individual_centavos: classificacao.valorCentavos,
-      };
-    }
-
-    textoObrigatorio(cliente.data_nascimento, `clientes[${indice}].data_nascimento`);
-    validarContato(cliente, `clientes[${indice}]`);
-    if (typeof cliente.participa_auditorio !== "boolean") {
-      throw new ErroValidacaoCadastro(
-        `O campo participa_auditorio de clientes[${indice}] deve ser booleano`,
-      );
-    }
-
-    const idadeEvento = calcularIdadeNaData(cliente.data_nascimento);
-    if (idadeEvento < 12) {
-      throw new ErroValidacaoCadastro(
-        `O participante clientes[${indice}] deve possuir 12 anos ou mais na data do evento`,
-      );
-    }
-    const classificacao = classificarParticipante(idadeEvento, tipoQuarto);
-
-    return {
-      ...cliente,
-      nome,
-      cpf: String(cliente.cpf),
-      telefone,
-      idade_evento: idadeEvento,
-      categoria: classificacao.categoria,
-      valor_individual: centavosParaValor(classificacao.valorCentavos),
-      valor_individual_centavos: classificacao.valorCentavos,
-    };
-  });
+  const clientes = payload.clientes.map((cliente, indice) =>
+    normalizarParticipanteAdulto(cliente, `clientes[${indice}]`, tipoQuarto, {
+      dadosOpcionais: payload.divisao_pagamento && indice === 1,
+    }),
+  );
 
   const responsavel = clientes[0];
+
+  const acompanhantes = acompanhantesOriginais.map((acompanhante, indice) => ({
+    ...normalizarParticipanteAdulto(
+      acompanhante,
+      `acompanhantes[${indice}]`,
+      tipoQuarto,
+      { dadosOpcionais: payload.divisao_pagamento && indice === 0 },
+    ),
+    cpf_anfitriao: responsavel.cpf,
+  }));
 
   if (payload.enviou_convite) {
     textoObrigatorio(payload.nome_convidado, "nome_convidado");
@@ -380,22 +365,19 @@ export function prepararCadastro(payload) {
 
   const cpfs = [
     ...clientes.map((cliente) => cliente.cpf),
+    ...acompanhantes.map((acompanhante) => acompanhante.cpf),
     ...criancas.map((crianca) => crianca.cpf_crianca),
   ].filter((cpf) => cpf !== null && cpf !== undefined && cpf !== "");
   if (new Set(cpfs).size !== cpfs.length) {
-    throw new ErroValidacaoCadastro("Não são permitidos CPFs duplicados entre clientes e crianças");
+    throw new ErroValidacaoCadastro(
+      "Não são permitidos CPFs duplicados entre clientes, acompanhantes e crianças",
+    );
   }
 
-  const valorCalculadoCentavos = [...clientes, ...criancas].reduce(
+  const valorCalculadoCentavos = [...clientes, ...acompanhantes, ...criancas].reduce(
     (total, participante) => total + participante.valor_individual_centavos,
     0,
   );
-  const valorRecebidoCentavos = valorParaCentavos(payload.valor_total);
-  if (valorRecebidoCentavos !== valorCalculadoCentavos) {
-    throw new ErroValidacaoCadastro(
-      `O valor_total informado diverge do valor calculado pelo backend: R$ ${centavosParaValor(valorCalculadoCentavos).toFixed(2)}`,
-    );
-  }
 
   const transfer = payload.transfer.map((item) => {
     if (!item || typeof item !== "object" || Array.isArray(item)) {
@@ -418,7 +400,7 @@ export function prepararCadastro(payload) {
       (total, crianca) => total + crianca.valor_individual_centavos,
       0,
     );
-    clientes.forEach((cliente, indice) => {
+    [...clientes, ...acompanhantes].forEach((cliente, indice) => {
       const totalCliente =
         cliente.valor_individual_centavos + (indice === 0 ? valorCriancas : 0);
       parcelas.push(
@@ -436,7 +418,7 @@ export function prepararCadastro(payload) {
 
   return {
     ...payload,
-    nome_evento: 'encontro_franqueados_2027',
+    nome_evento: NOME_EVENTO_ATIVO,
     cnpj,
     cep,
     razao_social: textoObrigatorio(payload.razao_social, "razao_social"),
@@ -446,10 +428,15 @@ export function prepararCadastro(payload) {
     cidade: textoObrigatorio(payload.cidade, "cidade"),
     uf: textoObrigatorio(payload.uf, "uf"),
     tipo_quarto: tipoQuarto,
+    tipo_cama: textoObrigatorio(
+      payload.tipo_cama ?? payload.preferencia_cama,
+      "tipo_cama",
+    ).toUpperCase(),
     preferencia_cama: preferenciaCama,
     quantidade_parcelas: quantidadeParcelas,
     valor_total: centavosParaValor(valorCalculadoCentavos),
     clientes: clientes.map(removerCentavosInternos),
+    acompanhantes: acompanhantes.map(removerCentavosInternos),
     criancas: criancas.map(removerCentavosInternos),
     transfer,
     parcelas,
