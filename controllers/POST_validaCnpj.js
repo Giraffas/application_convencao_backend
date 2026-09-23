@@ -6,7 +6,7 @@ export default async function postValidaCnpj(req, res) {
     try {
         
         const {cnpj} = req.body
-
+        console.log(cnpj)
         const direnv = pathAbsolute('.env')
         config({path: direnv})
         const ambient = process.env.AMBIENT
@@ -15,7 +15,7 @@ export default async function postValidaCnpj(req, res) {
         const {data, error} = await client
             .schema(ambient)
             .from('EV_BASE_CNPJ_ATIVA')
-            .select('cnpj')
+            .select('*')
             .eq('cnpj', cnpj)
 
         if(error) {
@@ -31,10 +31,15 @@ export default async function postValidaCnpj(req, res) {
                 mensagem: 'Cadastro do CNPJ não localizado, não sera possivel seguir com a inscrição para o evento, em caso de duvidas entrar em contato com o email eventos@giraffas.com'
             })
         }
+        res.status(200).json({
+            sucess: true,
+            mensagem: 'Cnpj ativo na base',
+            data: data
+        })
     }
     catch (error) {
         console.error('Erro na rota de validacao de cnpj  ', error)
-        res.status(500).json({
+        return res.status(500).json({
             erro: true,
             mensagem: 'Erro na rota de validacao de cnpj',
             msg_erro: error
