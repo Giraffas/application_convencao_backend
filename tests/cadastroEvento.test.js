@@ -94,6 +94,27 @@ function crianca(indice, dataNascimento = "2018-03-10") {
   };
 }
 
+test("preserva data_inscricao recebida na raiz do payload", () => {
+  const cadastro = prepararCadastro({ ...payloadBase(), data_inscricao: "2026-09-24" });
+  assert.equal(cadastro.data_inscricao, "2026-09-24");
+});
+
+test("gera data_inscricao atual em São Paulo quando não informada", () => {
+  const atual = () => new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+  const antes = atual();
+  const cadastro = prepararCadastro(payloadBase());
+  assert.ok([antes, atual()].includes(cadastro.data_inscricao));
+  assert.match(cadastro.data_inscricao, /^\d{4}-\d{2}-\d{2}$/);
+});
+
+test("rejeita data_inscricao inválida antes de gravar o cadastro", () => {
+  for (const data_inscricao of ["2026-02-30", "24/09/2026", "2026-00-24", 123]) {
+    assert.throws(() => prepararCadastro({ ...payloadBase(), data_inscricao }), ErroValidacaoCadastro);
+  }
+});
+
 test("aceita SINGLE com um participante", () => {
   const cadastro = prepararCadastro(payloadBase("SINGLE"));
   assert.equal(cadastro.clientes.length, 1);

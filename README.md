@@ -691,6 +691,19 @@ O hook:
 4. vincula o CNPJ ao cadastro do convidado;
 5. insere a empresa.
 
+### Data de inscrição
+
+O cadastro aceita `data_inscricao` na raiz do payload, no formato `AAAA-MM-DD`
+(por exemplo, `"data_inscricao": "2026-09-24"`). O backend preserva a data
+informada e rejeita datas inválidas; quando ausente, nula ou vazia, utiliza a
+data atual no fuso `America/Sao_Paulo`.
+
+A RPC `cadastrar_evento` grava essa data na coluna existente
+`EV_CADASTRO_CLIENTES.data_inscricao` para cada item de `clientes`, dentro da
+mesma transação do pedido. A migration
+`supabase/migrations/20260924185059_persistir_data_inscricao_cadastro.sql`
+foi aplicada em `GIRAFFAS_HOMOLOG`. Registros anteriores não são alterados.
+
 ## Fluxos de negócio
 
 ### Cadastro

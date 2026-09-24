@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="x-apple-disable-message-reformatting">
+  <meta name="format-detection" content="telephone=no,date=no,address=no,email=no,url=no">
+  <title>{{titulo}}</title>
+  <style>
+    @media only screen and (max-width: 640px) {
+      .email-shell { width: 100% !important; }
+      .outer-cell { padding: 20px 12px !important; }
+      .content-cell { padding: 32px 24px !important; }
+      .email-title { font-size: 26px !important; line-height: 32px !important; }
+    }
+  </style>
+</head>
+<!--
+  Modelo base: substitua os marcadores {{campo}} antes de enviar.
+  Campos de texto: titulo, preheader, destinatario, mensagem, complemento, equipe.
+  Escape &, <, >, aspas simples e duplas nos valores inseridos.
+  mensagem e complemento são texto simples; duplique os parágrafos para ampliar o conteúdo.
+  Remova o parágrafo de complemento quando não houver conteúdo.5
+  O preheader é a prévia exibida ao lado do assunto na caixa de entrada.
+  Este arquivo não executa substituições automaticamente.
+-->
+<body style="margin:0; padding:0; width:100%; background-color:#f4f4f4; color:#303030; font-family:Arial, Helvetica, sans-serif; -webkit-text-size-adjust:100%; -ms-text-size-adjust:100%;">
+  <div style="display:none; max-height:0; max-width:0; overflow:hidden; opacity:0; color:transparent; line-height:1px; font-size:1px; mso-hide:all;">{{preheader}}</div>
+
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#f4f4f4" style="width:100%; background-color:#f4f4f4; border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt;">
+    <tr>
+      <td class="outer-cell" align="center" style="padding:32px 12px;">
+        <!--[if mso]>
+        <table role="presentation" width="640" cellspacing="0" cellpadding="0" border="0"><tr><td>
+        <![endif]-->
+        <table class="email-shell" role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" bgcolor="#ffffff" style="width:100%; max-width:640px; background-color:#ffffff; border-collapse:collapse; border-radius:16px; overflow:hidden; box-shadow:0 8px 28px rgba(0,0,0,0.08); mso-table-lspace:0pt; mso-table-rspace:0pt;">
+          <tr>
+            <td height="6" bgcolor="#f79400" style="height:6px; background-color:#f79400; font-size:0; line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td class="content-cell" style="padding:44px 52px 48px; background-color:#ffffff;">
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%; border-collapse:collapse; mso-table-lspace:0pt; mso-table-rspace:0pt;">
+                <tr>
+                  <td style="font-family:Arial, Helvetica, sans-serif; overflow-wrap:break-word; word-wrap:break-word;">
+                    <p style="margin:0 0 12px; color:#f79400; font-size:13px; font-weight:700; line-height:20px; letter-spacing:1.2px; text-transform:uppercase;">
+                      Comunicação Giraffas
+                    </p>
+                    <h1 class="email-title" style="margin:0 0 24px; color:#292929; font-size:32px; font-weight:700; line-height:40px;">
+                      {{titulo}}
+                    </h1>
+                    <p style="margin:0 0 18px; color:#444444; font-size:16px; line-height:26px;">
+                      Olá, <strong>{{destinatario}}</strong>!
+                    </p>
+                    <p style="margin:0 0 26px; color:#444444; font-size:16px; line-height:26px;">
+                      {{mensagem}}
+                    </p>
+                    <p style="margin:0 0 26px; color:#444444; font-size:16px; line-height:26px;">
+                      {{complemento}}
+                    </p>
+                    <p style="margin:28px 0 0; color:#666666; font-size:14px; line-height:22px;">
+                      Atenciosamente,<br>
+                      <strong style="color:#f79400;">{{equipe}}</strong>
+                    </p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+        <!--[if mso]>
+        </td></tr></table>
+        <![endif]-->
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

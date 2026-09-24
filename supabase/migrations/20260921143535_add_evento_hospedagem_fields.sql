@@ -95,7 +95,7 @@ begin
       participa_auditorio,
       idade_evento,
       categoria,
-      valor_individual
+      valor_individual,
     ) values (
       current_timestamp,
       v_cliente ->> 'nome',

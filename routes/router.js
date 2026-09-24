@@ -21,12 +21,15 @@ import postBaixaParcela from "../controllers/POST_baixaParcela.js";
 import postReactiveInscricaoRoute from '../controllers/POST_cancelaReservaRoute.js'
 import postResgataPedido from '../controllers/POST_resgataPedido.js'
 import postValidaCnpj from "../controllers/POST_validaCnpj.js";
+import getDataEventoRoute from '../controllers/POST_dataEventoRoute.js'
+
 //GET
 import getConsultaParcelas from '../controllers/GET_consultaParcelas.js'
 import getClientesAtivos from "../controllers/GET_clientesAtivos.js";
 import getClientesInativos from "../controllers/GET_clientesInativos.js";
 import getRouterDataEvento from "../controllers/GET_routerDataEvento.js";
 import getClientes from '../controllers/GET_clientes.js'
+
 
 const router = Router()
 console.log('Router aitvo')
@@ -36,6 +39,7 @@ router.post('/hooks/autocompletecnpj', hookAutocompleteCnpj)
 router.post('/posts/consultas/consultainscricao', postConsultaInscricao)
 router.post('/hooks/cadastro', hookCadastro)
 router.post('/post/sellers/validasellers',postValidaCnpj)
+router.post('/events/data/dataevent/encontrogirafas', getDataEventoRoute)
 router.use(authMiddleware)
 
 router.get('/orders/paymanets/listpayments', getConsultaParcelas)

@@ -298,9 +298,9 @@ export function prepararCadastro(payload) {
   if (!Array.isArray(criancasOriginais) || criancasOriginais.length > 2) {
     throw new ErroValidacaoCadastro("O campo criancas deve ser uma lista com no máximo dois registros");
   }
-  if (!Array.isArray(payload.transfer) || payload.transfer.length !== 1) {
-    throw new ErroValidacaoCadastro("O campo transfer deve possuir exatamente um registro");
-  }
+  // if (!Array.isArray(payload.transfer) || payload.transfer.length !== 1) {
+  //   throw new ErroValidacaoCadastro("O campo transfer deve possuir exatamente um registro");
+  // }
 
   const clientes = payload.clientes.map((cliente, indice) =>
     normalizarParticipanteAdulto(cliente, `clientes[${indice}]`, tipoQuarto, {
@@ -415,30 +415,34 @@ export function prepararCadastro(payload) {
 
   const removerCentavosInternos = ({ valor_individual_centavos, ...participante }) =>
     participante;
-
-  return {
-    ...payload,
-    nome_evento: NOME_EVENTO_ATIVO,
-    cnpj,
-    cep,
-    razao_social: textoObrigatorio(payload.razao_social, "razao_social"),
-    endereco: textoObrigatorio(payload.endereco, "endereco"),
-    complemento: textoObrigatorio(payload.complemento, "complemento"),
-    bairro: textoObrigatorio(payload.bairro, "bairro"),
-    cidade: textoObrigatorio(payload.cidade, "cidade"),
-    uf: textoObrigatorio(payload.uf, "uf"),
-    tipo_quarto: tipoQuarto,
-    tipo_cama: textoObrigatorio(
-      payload.tipo_cama ?? payload.preferencia_cama,
-      "tipo_cama",
-    ).toUpperCase(),
-    preferencia_cama: preferenciaCama,
-    quantidade_parcelas: quantidadeParcelas,
-    valor_total: centavosParaValor(valorCalculadoCentavos),
-    clientes: clientes.map(removerCentavosInternos),
-    acompanhantes: acompanhantes.map(removerCentavosInternos),
-    criancas: criancas.map(removerCentavosInternos),
-    transfer,
-    parcelas,
-  };
+  const dataInscricao = dataIsoOpcional(payload.data_inscricao, "data_inscricao") ??
+    new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    return {
+      ...payload,
+      nome_evento: NOME_EVENTO_ATIVO,
+      cnpj,
+      cep,
+      data_inscricao: dataInscricao,
+      razao_social: textoObrigatorio(payload.razao_social, "razao_social"),
+      endereco: textoObrigatorio(payload.endereco, "endereco"),
+      complemento: textoObrigatorio(payload.complemento, "complemento"),
+      bairro: textoObrigatorio(payload.bairro, "bairro"),
+      cidade: textoObrigatorio(payload.cidade, "cidade"),
+      uf: textoObrigatorio(payload.uf, "uf"),
+      tipo_quarto: tipoQuarto,
+      tipo_cama: textoObrigatorio(
+        payload.tipo_cama ?? payload.preferencia_cama,
+        "tipo_cama",
+      ).toUpperCase(),
+      preferencia_cama: preferenciaCama,
+      quantidade_parcelas: quantidadeParcelas,
+      valor_total: centavosParaValor(valorCalculadoCentavos),
+      clientes: clientes.map(removerCentavosInternos),
+      acompanhantes: acompanhantes.map(removerCentavosInternos),
+      criancas: criancas.map(removerCentavosInternos),
+      transfer,
+      parcelas,
+    };
 }
