@@ -291,7 +291,7 @@ test("cadastro usa uma única RPC e propaga falha sem executar inserts isolados"
     },
   };
 
-  const resultado = await executarCadastroAtomico(client, "GIRAFFAS_HOMOLOG", {
+  const resultado = await executarCadastroAtomico(client, "GIRAFFAS_PROD", {
     id_pedido: "1234567890",
   });
 

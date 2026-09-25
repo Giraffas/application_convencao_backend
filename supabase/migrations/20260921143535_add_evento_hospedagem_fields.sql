@@ -1,10 +1,10 @@
-alter table "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CLIENTES"
+alter table "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES"
   add column if not exists participa_auditorio boolean,
   add column if not exists idade_evento integer,
   add column if not exists categoria text,
   add column if not exists valor_individual numeric(12, 2);
 
-alter table "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CRIANCA"
+alter table "GIRAFFAS_PROD"."EV_CADASTRO_CRIANCA"
   add column if not exists email text,
   add column if not exists tm_camiseta text,
   add column if not exists tm_chinelo text,
@@ -12,7 +12,7 @@ alter table "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CRIANCA"
   add column if not exists categoria text,
   add column if not exists valor_individual numeric(12, 2);
 
-alter table "GIRAFFAS_HOMOLOG"."EV_PEDIDOS"
+alter table "GIRAFFAS_PROD"."EV_PEDIDOS"
   add column if not exists tipo_quarto character varying,
   add column if not exists preferencia_cama character varying,
   add column if not exists divisao_pagamento boolean,
@@ -22,7 +22,7 @@ alter table "GIRAFFAS_HOMOLOG"."EV_PEDIDOS"
   add column if not exists regiao_desembarque text,
   add column if not exists horario_desembarque text;
 
-create or replace function "GIRAFFAS_HOMOLOG".cadastrar_evento(p_payload jsonb)
+create or replace function "GIRAFFAS_PROD".cadastrar_evento(p_payload jsonb)
 returns jsonb
 language plpgsql
 security invoker
@@ -43,7 +43,7 @@ begin
 
   if exists (
     select 1
-      from "GIRAFFAS_HOMOLOG"."EV_PEDIDOS"
+      from "GIRAFFAS_PROD"."EV_PEDIDOS"
      where id_pedido = v_id_pedido
   ) then
     raise exception using
@@ -51,7 +51,7 @@ begin
       message = 'Código de pedido já utilizado';
   end if;
 
-  insert into "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CNPJ" (
+  insert into "GIRAFFAS_PROD"."EV_CADASTRO_CNPJ" (
     created_at,
     cnpj,
     razao_social,
@@ -78,7 +78,7 @@ begin
   for v_cliente in
     select value from jsonb_array_elements(p_payload -> 'clientes')
   loop
-    insert into "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CLIENTES" (
+    insert into "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES" (
       created_at,
       nome,
       nome_cracha,
@@ -119,7 +119,7 @@ begin
   end loop;
 
   if (p_payload ->> 'enviou_convite')::boolean then
-    insert into "GIRAFFAS_HOMOLOG"."EV_REGISTRO_CONVITES" (
+    insert into "GIRAFFAS_PROD"."EV_REGISTRO_CONVITES" (
       created_at,
       nome_anfitriao,
       cpf_anfitriao,
@@ -146,7 +146,7 @@ begin
     select value
       from jsonb_array_elements(coalesce(p_payload -> 'criancas', '[]'::jsonb))
   loop
-    insert into "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CRIANCA" (
+    insert into "GIRAFFAS_PROD"."EV_CADASTRO_CRIANCA" (
       created_at,
       nome_responsavel,
       cpf_responsavel,
@@ -179,7 +179,7 @@ begin
     );
   end loop;
 
-  insert into "GIRAFFAS_HOMOLOG"."EV_PEDIDOS" (
+  insert into "GIRAFFAS_PROD"."EV_PEDIDOS" (
     created_at,
     nome,
     email,
@@ -222,7 +222,7 @@ begin
   for v_parcela in
     select value from jsonb_array_elements(p_payload -> 'parcelas')
   loop
-    insert into "GIRAFFAS_HOMOLOG"."EV_PARCELAS_PGTO" (
+    insert into "GIRAFFAS_PROD"."EV_PARCELAS_PGTO" (
       cpf,
       numero_parcela,
       valor_parcela,
@@ -245,7 +245,7 @@ begin
 end;
 $$;
 
-revoke execute on function "GIRAFFAS_HOMOLOG".cadastrar_evento(jsonb)
+revoke execute on function "GIRAFFAS_PROD".cadastrar_evento(jsonb)
   from public, anon, authenticated;
-grant execute on function "GIRAFFAS_HOMOLOG".cadastrar_evento(jsonb)
+grant execute on function "GIRAFFAS_PROD".cadastrar_evento(jsonb)
   to service_role;

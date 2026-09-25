@@ -58,7 +58,7 @@ backend/
 ├── controllers/            # Consultas e mutações no Supabase
 ├── database/
 │   ├── supabase.js         # Criação do cliente Supabase
-│   └── liberar_tabelas_giraffas_homolog.sql
+│   └── liberar_tabelas_giraffas_prod.sql
 ├── functions/              # Funções auxiliares
 ├── hooks/                  # Orquestração dos fluxos de negócio
 ├── middleware/             # Validação dos tokens JWT
@@ -106,7 +106,7 @@ Crie um arquivo `.env` na raiz:
 SERVER_PORT=5000
 SUPABASE_URL=https://SEU-PROJETO.supabase.co
 SUPABASE_KEY=SUA_CHAVE_DE_BACKEND
-AMBIENT=GIRAFFAS_HOMOLOG
+AMBIENT=GIRAFFAS_PROD
 JWT_SECRET=SEGREDO_FORTE_E_ALEATORIO
 ```
 
@@ -115,7 +115,7 @@ JWT_SECRET=SEGREDO_FORTE_E_ALEATORIO
 | `SERVER_PORT` | Sim | Porta HTTP usada pelo Express |
 | `SUPABASE_URL` | Sim | URL do projeto Supabase |
 | `SUPABASE_KEY` | Sim | Chave utilizada exclusivamente pelo backend |
-| `AMBIENT` | Sim | Schema consultado, por exemplo `GIRAFFAS_HOMOLOG` |
+| `AMBIENT` | Sim | Schema consultado, por exemplo `GIRAFFAS_PROD` |
 | `JWT_SECRET` | Sim | Segredo utilizado para assinar tokens HS256 |
 
 Não versione o `.env`. Uma chave `service_role` nunca deve ser enviada ao frontend, registrada em logs ou incluída em imagens Docker.
@@ -233,7 +233,32 @@ Todas as consultas utilizam o schema definido por `AMBIENT`.
 | `EV_USUARIOS_ADMINISTRATIVOS` | Credenciais administrativas |
 | `vw_ev_analise_financeira` | View consultada pela listagem financeira |
 
-O arquivo `database/liberar_tabelas_giraffas_homolog.sql` concede ao papel `service_role` uso do schema e operações CRUD nas tabelas do ambiente de homologação.
+O arquivo `database/liberar_tabelas_giraffas_prod.sql` concede ao papel `service_role` uso do schema e operações CRUD nas tabelas do ambiente de produção.
+
+Em 25/09/2026, a migration
+`supabase/migrations/20260925205930_replicar_estrutura_eventos_prod.sql`
+replicou em `GIRAFFAS_PROD` a estrutura das 10 tabelas consumidas pelas rotas
+ou pela RPC: `EV_ACOMPANHANTES`, `EV_BASE_CNPJ_ATIVA`, `EV_CADASTRO_CLIENTES`,
+`EV_CADASTRO_CNPJ`, `EV_CADASTRO_CRIANCA`, `EV_DATA_EVENTO`, `EV_PARCELAS_PGTO`,
+`EV_PEDIDOS`, `EV_REGISTRO_CONVITES` e `EV_USUARIOS_ADMINISTRATIVOS`.
+Também foram criadas `vw_ev_clientes`, `vw_ev_analise_financeira` e a RPC
+`cadastrar_evento`, com referências somente a produção.
+
+Nenhum registro foi copiado. A validação SQL e pela Data API confirmou as
+10 tabelas e 2 views vazias. As sequências são próprias de produção, e os índices
+e restrições foram preservados, inclusive a unicidade de telefone por pedido
+entre acompanhantes. A tabela `EV_CADASTRO_QUARTOS`, não consumida pelas rotas
+atuais, não faz parte desta replicação.
+
+As tabelas possuem RLS habilitado; o acesso é restrito ao backend com
+`service_role`. As views usam `security_invoker=true`. O advisor informa
+[RLS sem políticas](https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy),
+intencional nesse modelo de acesso exclusivo pelo servidor.
+
+Antes de usar os fluxos funcionais, cadastre em produção o evento ativo, a base
+de CNPJs e os usuários administrativos necessários. Esses dados também ficaram
+vazios por solicitação. O script de replicação depende da estrutura de origem
+no mesmo banco e não deve ser reaplicado sobre objetos já existentes.
 
 ### Identificador de pedido
 
@@ -645,8 +670,8 @@ arredondamento é aplicada à última parcela.
 
 A migration `supabase/migrations/20260918143846_cadastro_evento_atomico.sql`
 adiciona somente as colunas ausentes e cria a função transacional
-`GIRAFFAS_HOMOLOG.cadastrar_evento(jsonb)`. A migration foi aplicada no ambiente
-de homologação em 18/09/2026. Para outros ambientes, aplique o mesmo arquivo
+`GIRAFFAS_PROD.cadastrar_evento(jsonb)`. A versão original foi aplicada no ambiente
+de homologação em 18/09/2026. Para produção, prepare as tabelas base e aplique os scripts
 antes de disponibilizar a rota. Confirme também que `SUPABASE_KEY` no backend é
 uma chave secreta de servidor (`sb_secret_`) ou uma chave legada
 `service_role`. Essa chave deve permanecer exclusivamente no servidor.
@@ -659,8 +684,8 @@ a primeira é pública e a segunda está posicionada depois do middleware JWT.
 
 A migration `supabase/migrations/20260921200147_adicionar_acompanhantes_evento.sql`
 adapta a tabela `EV_ACOMPANHANTES`, adiciona `tipo_cama` em `EV_PEDIDOS` e
-atualiza a função transacional para gravar a lista `acompanhantes`. A migration
-foi aplicada no ambiente de homologação em 21/09/2026.
+atualiza a função transacional para gravar a lista `acompanhantes`. A versão original
+foi aplicada no ambiente de homologação em 21/09/2026; a versão atual aponta para produção.
 
 ### Resgatar convite
 
@@ -702,7 +727,9 @@ A RPC `cadastrar_evento` grava essa data na coluna existente
 `EV_CADASTRO_CLIENTES.data_inscricao` para cada item de `clientes`, dentro da
 mesma transação do pedido. A migration
 `supabase/migrations/20260924185059_persistir_data_inscricao_cadastro.sql`
-foi aplicada em `GIRAFFAS_HOMOLOG`. Registros anteriores não são alterados.
+está direcionada a `GIRAFFAS_PROD`; sua lógica foi incluída na replicação da
+estrutura de produção em 25/09/2026.
+Registros anteriores não são alterados.
 
 ## Fluxos de negócio
 

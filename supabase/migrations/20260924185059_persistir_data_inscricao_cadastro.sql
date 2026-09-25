@@ -1,4 +1,4 @@
-CREATE OR REPLACE FUNCTION "GIRAFFAS_HOMOLOG".cadastrar_evento(p_payload jsonb)
+CREATE OR REPLACE FUNCTION "GIRAFFAS_PROD".cadastrar_evento(p_payload jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql
  SET search_path TO ''
@@ -19,7 +19,7 @@ begin
 
   if exists (
     select 1
-      from "GIRAFFAS_HOMOLOG"."EV_PEDIDOS"
+      from "GIRAFFAS_PROD"."EV_PEDIDOS"
      where id_pedido = v_id_pedido
   ) then
     raise exception using
@@ -27,7 +27,7 @@ begin
       message = 'Código de pedido já utilizado';
   end if;
 
-  insert into "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CNPJ" (
+  insert into "GIRAFFAS_PROD"."EV_CADASTRO_CNPJ" (
     created_at,
     cnpj,
     razao_social,
@@ -55,7 +55,7 @@ begin
     select value
       from jsonb_array_elements(p_payload -> 'clientes')
   loop
-    insert into "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CLIENTES" (
+    insert into "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES" (
       created_at,
       data_inscricao,
       nome,
@@ -101,7 +101,7 @@ begin
     select value
       from jsonb_array_elements(coalesce(p_payload -> 'acompanhantes', '[]'::jsonb))
   loop
-    insert into "GIRAFFAS_HOMOLOG"."EV_ACOMPANHANTES" (
+    insert into "GIRAFFAS_PROD"."EV_ACOMPANHANTES" (
       id_pedido,
       nome_evento,
       nome,
@@ -137,7 +137,7 @@ begin
   end loop;
 
   if (p_payload ->> 'enviou_convite')::boolean then
-    insert into "GIRAFFAS_HOMOLOG"."EV_REGISTRO_CONVITES" (
+    insert into "GIRAFFAS_PROD"."EV_REGISTRO_CONVITES" (
       created_at,
       nome_anfitriao,
       cpf_anfitriao,
@@ -164,7 +164,7 @@ begin
     select value
       from jsonb_array_elements(coalesce(p_payload -> 'criancas', '[]'::jsonb))
   loop
-    insert into "GIRAFFAS_HOMOLOG"."EV_CADASTRO_CRIANCA" (
+    insert into "GIRAFFAS_PROD"."EV_CADASTRO_CRIANCA" (
       created_at,
       nome_responsavel,
       cpf_responsavel,
@@ -197,7 +197,7 @@ begin
     );
   end loop;
 
-  insert into "GIRAFFAS_HOMOLOG"."EV_PEDIDOS" (
+  insert into "GIRAFFAS_PROD"."EV_PEDIDOS" (
     created_at,
     nome,
     email,
@@ -243,7 +243,7 @@ begin
     select value
       from jsonb_array_elements(p_payload -> 'parcelas')
   loop
-    insert into "GIRAFFAS_HOMOLOG"."EV_PARCELAS_PGTO" (
+    insert into "GIRAFFAS_PROD"."EV_PARCELAS_PGTO" (
       cpf,
       numero_parcela,
       valor_parcela,
