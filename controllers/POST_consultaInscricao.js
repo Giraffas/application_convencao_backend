@@ -105,7 +105,7 @@ export default async function postConsultaInscricao(req, res) {
             return res.status(200).json({
                 sucess: true,
                 success: true,
-                mensagem: 'usuario encontrado no sistema',
+                mensagem: 'cadastro encontrado com sucesso',
                 token: token,
                 nome: order.nome,
                 email: order.email,
