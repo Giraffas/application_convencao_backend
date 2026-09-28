@@ -18,7 +18,8 @@ app.use(cors({
     'https://convencoesgiraffas.com.br',
     'https://www.convencao2027.giraffas.com.br',
     'https://hml-convencao.giraffas.com.br',
-    'http://localhost:4200'
+    'http://localhost:4200',
+    'https://convencao2027.giraffas.com.br/'
   ],
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']
 }));
