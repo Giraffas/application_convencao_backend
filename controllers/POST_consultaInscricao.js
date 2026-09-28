@@ -100,12 +100,17 @@ export default async function postConsultaInscricao(req, res) {
                 mensagem: "Inscrição não encontrada com base nos dados informados"
             });
         }
-            const token = geraToken(data.nome, data.nome,res)
-            res.status(200).json({
+            const order = data[0]
+            const token = geraToken(order.nome, order.cpf || order.email, res)
+            return res.status(200).json({
                 sucess: true,
+                success: true,
                 mensagem: 'usuario encontrado no sistema',
                 token: token,
-                order:  [0]
+                nome: order.nome,
+                email: order.email,
+                cpf: order.cpf,
+                order: order
             })
     }
     catch(err) {

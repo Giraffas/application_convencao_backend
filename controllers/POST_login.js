@@ -54,8 +54,9 @@ export default async function login(req, res) {
                 mensagem: "Usuário ou senha inválidos"
             });
         }
-        const token = geraToken(data.email, data.email, res)
-        res.status(200).json({
+        const usuario = data[0]
+        const token = geraToken(usuario.nome_usuario || usuario.email, usuario.email, res)
+        return res.status(200).json({
             sucess: true,
             mensagem: 'login realizado com sucesso',
             token: token
