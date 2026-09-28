@@ -11,6 +11,8 @@ export default async function hookAlteraChecking(req, res) {
     nova_hora_embarque,
     nova_data_desembarque,
     nova_hora_desembarque,
+    regiao_embarque,
+    regiao_desembarque,
   } = req.body;
 
   if (!cpf) {
@@ -50,7 +52,9 @@ export default async function hookAlteraChecking(req, res) {
     nova_data,
     nova_hora_embarque,
     nova_data_desembarque,
-    nova_hora_desembarque
+    nova_hora_desembarque,
+    regiao_embarque,
+    regiao_desembarque
   );
   if (alteracao === false) {
     return res.status(500).json({

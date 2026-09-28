@@ -9,6 +9,8 @@ export default async function postAlteracaoChecking(
   nova_hora_embarque,
   nova_data_desembarque,
   nova_hora_desembarque,
+  regiao_embarque,
+  regiao_desembarque,
 ) {
   try {
     const drienv = pathAbsolute(".env");
@@ -25,6 +27,8 @@ export default async function postAlteracaoChecking(
         horario_embarque: nova_hora_embarque,
         data_desembarque: nova_data_desembarque,
         horario_desembarque: nova_hora_desembarque,
+        regiao_embarque,
+        regiao_desembarque,
       })
       .eq("cpf", cpf)
       .eq("email", email)
