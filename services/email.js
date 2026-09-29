@@ -87,6 +87,7 @@ export async function enviarEmail({ para, assunto, texto, html }) {
     return transporter.sendMail({
       from: process.env.EMAIL_FROM,
       to: para,
+      cc: ['eventos@giraffas.com', 'felipe.barbosa@giraffas.com'],
       subject: assunto,
       text: texto,
       html,
