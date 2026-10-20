@@ -55,7 +55,7 @@ export default async function postInsertCnpjBase(req, res) {
 
     const client = await supabase();
 
-    const { error } = await client.schema(ambient).from("").insert({
+    const { error } = await client.schema(ambient).from("EV_BASE_CNPJ_ATIVA").insert({
       cnpj: cnpj,
       razao_social: razao_social,
       restaurante: restaurante,
