@@ -52,7 +52,7 @@ router.get('/sellers/inactive/sellersinactive', getClientesInativos)
 router.get('/events/date/dateevent', getRouterDataEvento)
 router.get('/sellers/all/sellersall', getClientes)
 
-router.post('post/sellers/base/cnpj/inserted', postInsertCnpjBase )
+router.post('/post/sellers/base/cnpj/inserted', postInsertCnpjBase )
 router.post('/post/sellers/base/cnpj', postAtualizaCnpj)
 router.post('/posts/orders/modify/ordercheckingcheckou', postAtualizaPedidos)
 router.post('/posts/payments/administrator/check', postBaixaParcela)
