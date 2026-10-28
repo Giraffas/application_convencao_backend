@@ -1,52 +1,68 @@
-alter table "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES"
-  add column if not exists participa_auditorio boolean,
-  add column if not exists idade_evento integer,
-  add column if not exists categoria text,
-  add column if not exists valor_individual numeric(12, 2);
+-- ============================================================
+-- 1. ADICIONA A NOVA COLUNA
+-- ============================================================
 
-alter table "GIRAFFAS_PROD"."EV_CADASTRO_CRIANCA"
-  add column if not exists email text,
-  add column if not exists tm_camiseta text,
-  add column if not exists tm_chinelo text,
-  add column if not exists idade_evento integer,
-  add column if not exists categoria text,
-  add column if not exists valor_individual numeric(12, 2);
+ALTER TABLE "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES"
+  ADD COLUMN IF NOT EXISTS categoria_participante text;
 
-alter table "GIRAFFAS_PROD"."EV_PEDIDOS"
-  add column if not exists data_desembarque date,
-  add column if not exists regiao_desembarque text,
-  add column if not exists horario_desembarque text;
 
-create or replace function "GIRAFFAS_PROD".cadastrar_evento(p_payload jsonb)
-returns jsonb
-language plpgsql
-security invoker
-set search_path = ''
-as $$
-declare
+-- ============================================================
+-- 2. ATUALIZA A FUNÇÃO DE CADASTRO
+-- ============================================================
+
+CREATE OR REPLACE FUNCTION "GIRAFFAS_PROD".cadastrar_evento(
+  p_payload jsonb
+)
+RETURNS jsonb
+LANGUAGE plpgsql
+SECURITY INVOKER
+SET search_path TO ''
+AS $function$
+DECLARE
   v_cliente jsonb;
+  v_acompanhante jsonb;
   v_crianca jsonb;
   v_parcela jsonb;
   v_transfer jsonb := p_payload -> 'transfer' -> 0;
   v_responsavel jsonb := p_payload -> 'clientes' -> 0;
   v_indice integer := 0;
   v_id_pedido text := p_payload ->> 'id_pedido';
-begin
-  perform pg_catalog.pg_advisory_xact_lock(
+BEGIN
+  -- Impede que o mesmo código de pedido seja processado
+  -- simultaneamente em transações diferentes.
+  PERFORM pg_catalog.pg_advisory_xact_lock(
     pg_catalog.hashtextextended(v_id_pedido, 0)
   );
 
-  if exists (
-    select 1
-      from "GIRAFFAS_PROD"."EV_PEDIDOS"
-     where id_pedido = v_id_pedido
-  ) then
-    raise exception using
-      errcode = '23505',
-      message = 'Código de pedido já utilizado';
-  end if;
+  IF EXISTS (
+    SELECT 1
+      FROM "GIRAFFAS_PROD"."EV_PEDIDOS"
+     WHERE id_pedido = v_id_pedido
+  ) THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '23505',
+      MESSAGE = 'Código de pedido já utilizado';
+  END IF;
 
-  insert into "GIRAFFAS_PROD"."EV_CADASTRO_CNPJ" (
+  -- Evita que categoria_participante seja silenciosamente
+  -- registrada como NULL.
+  IF NULLIF(
+    pg_catalog.btrim(
+      v_responsavel ->> 'categoria_participante'
+    ),
+    ''
+  ) IS NULL THEN
+    RAISE EXCEPTION USING
+      ERRCODE = '22023',
+      MESSAGE = 'O campo clientes[0].categoria_participante é obrigatório';
+  END IF;
+
+
+  -- ==========================================================
+  -- CNPJ / EMPRESA
+  -- ==========================================================
+
+  INSERT INTO "GIRAFFAS_PROD"."EV_CADASTRO_CNPJ" (
     created_at,
     cnpj,
     razao_social,
@@ -57,7 +73,7 @@ begin
     cidade,
     uf,
     cpf
-  ) values (
+  ) VALUES (
     current_date,
     p_payload ->> 'cnpj',
     p_payload ->> 'razao_social',
@@ -70,51 +86,142 @@ begin
     v_responsavel ->> 'cpf'
   );
 
-  for v_cliente in
-    select value from jsonb_array_elements(p_payload -> 'clientes')
-  loop
+
+  -- ==========================================================
+  -- CLIENTES
+  -- ==========================================================
+
+  FOR v_cliente IN
+    SELECT value
+      FROM pg_catalog.jsonb_array_elements(
+        p_payload -> 'clientes'
+      )
+  LOOP
     insert into "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES" (
-      created_at,
+  created_at,
+  data_inscricao,
+  nome,
+  nome_cracha,
+  cpf,
+  email,
+  data_nascimento,
+  tm_camiseta,
+  tm_chinelo,
+  enviou_convite,
+  cnpj,
+  telefone,
+  tipo_cliente,
+  presenca_cancelada,
+  participa_auditorio,
+  idade_evento,
+  categoria,
+  categoria_participante,
+  valor_individual
+) values (
+  current_timestamp,
+  nullif(p_payload ->> 'data_inscricao', '')::date,
+  v_cliente ->> 'nome',
+  v_cliente ->> 'nome_cracha',
+  v_cliente ->> 'cpf',
+  v_cliente ->> 'email',
+  nullif(v_cliente ->> 'data_nascimento', '')::date,
+  v_cliente ->> 'tm_camiseta',
+  v_cliente ->> 'tm_chinelo',
+  case
+    when v_indice = 0
+      then (p_payload ->> 'enviou_convite')::boolean
+    else false
+  end,
+  p_payload ->> 'cnpj',
+  v_cliente ->> 'telefone',
+  case
+    when v_indice = 0 then 'ANFITRIAO'
+    else 'CONVIDADO'
+  end,
+  false,
+  (v_cliente ->> 'participa_auditorio')::boolean,
+  (v_cliente ->> 'idade_evento')::integer,
+  v_cliente ->> 'categoria',
+  nullif(
+    pg_catalog.btrim(
+      v_cliente ->> 'categoria_participante'
+    ),
+    ''
+  ),
+  (v_cliente ->> 'valor_individual')::numeric
+);
+    v_indice := v_indice + 1;
+  END LOOP;
+
+
+  -- ==========================================================
+  -- ACOMPANHANTES
+  -- ==========================================================
+
+  FOR v_acompanhante IN
+    SELECT value
+      FROM pg_catalog.jsonb_array_elements(
+        COALESCE(
+          p_payload -> 'acompanhantes',
+          '[]'::jsonb
+        )
+      )
+  LOOP
+    INSERT INTO "GIRAFFAS_PROD"."EV_ACOMPANHANTES" (
+      id_pedido,
+      nome_evento,
       nome,
       nome_cracha,
       cpf,
       email,
       data_nascimento,
+      telefone,
       tm_camiseta,
       tm_chinelo,
-      enviou_convite,
-      cnpj,
-      telefone,
-      tipo_cliente,
-      presenca_cancelada,
       participa_auditorio,
       idade_evento,
       categoria,
-      valor_individual
-    ) values (
-      current_timestamp,
-      v_cliente ->> 'nome',
-      v_cliente ->> 'nome_cracha',
-      v_cliente ->> 'cpf',
-      v_cliente ->> 'email',
-      v_cliente ->> 'data_nascimento',
-      v_cliente ->> 'tm_camiseta',
-      v_cliente ->> 'tm_chinelo',
-      case when v_indice = 0 then (p_payload ->> 'enviou_convite')::boolean else false end,
-      p_payload ->> 'cnpj',
-      v_cliente ->> 'telefone',
-      case when v_indice = 0 then 'ANFITRIAO' else 'CONVIDADO' end,
-      false,
-      (v_cliente ->> 'participa_auditorio')::boolean,
-      (v_cliente ->> 'idade_evento')::integer,
-      v_cliente ->> 'categoria',
-      (v_cliente ->> 'valor_individual')::numeric
-    );
-    v_indice := v_indice + 1;
-  end loop;
+      valor_individual,
+      cpf_anfitriao,
+      relacao_participante
+    ) VALUES (
+      v_id_pedido,
+      p_payload ->> 'nome_evento',
+      v_acompanhante ->> 'nome',
+      v_acompanhante ->> 'nome_cracha',
+      v_acompanhante ->> 'cpf',
+      v_acompanhante ->> 'email',
+      NULLIF(
+        v_acompanhante ->> 'data_nascimento',
+        ''
+      )::date,
+      v_acompanhante ->> 'telefone',
+      v_acompanhante ->> 'tm_camiseta',
+      v_acompanhante ->> 'tm_chinelo',
+      (v_acompanhante ->> 'participa_auditorio')::boolean,
+      (v_acompanhante ->> 'idade_evento')::integer,
+      v_acompanhante ->> 'categoria',
+      (v_acompanhante ->> 'valor_individual')::numeric,
 
-  if (p_payload ->> 'enviou_convite')::boolean then
-    insert into "GIRAFFAS_PROD"."EV_REGISTRO_CONVITES" (
+      COALESCE(
+        v_acompanhante ->> 'cpf_anfitriao',
+        v_responsavel ->> 'cpf'
+      ),
+
+      v_acompanhante ->> 'relacao_participante'
+    );
+  END LOOP;
+
+
+  -- ==========================================================
+  -- CONVITE
+  -- ==========================================================
+
+  IF COALESCE(
+    (p_payload ->> 'enviou_convite')::boolean,
+    false
+  ) THEN
+    INSERT INTO "GIRAFFAS_PROD"."EV_REGISTRO_CONVITES" (
       created_at,
       nome_anfitriao,
       cpf_anfitriao,
@@ -124,7 +231,7 @@ begin
       cpf_convidado,
       email_convidado,
       convite_resgatado
-    ) values (
+    ) VALUES (
       current_timestamp,
       v_responsavel ->> 'nome',
       v_responsavel ->> 'cpf',
@@ -135,13 +242,23 @@ begin
       p_payload ->> 'email_convidado',
       false
     );
-  end if;
+  END IF;
 
-  for v_crianca in
-    select value
-      from jsonb_array_elements(coalesce(p_payload -> 'criancas', '[]'::jsonb))
-  loop
-    insert into "GIRAFFAS_PROD"."EV_CADASTRO_CRIANCA" (
+
+  -- ==========================================================
+  -- CRIANÇAS
+  -- ==========================================================
+
+  FOR v_crianca IN
+    SELECT value
+      FROM pg_catalog.jsonb_array_elements(
+        COALESCE(
+          p_payload -> 'criancas',
+          '[]'::jsonb
+        )
+      )
+  LOOP
+    INSERT INTO "GIRAFFAS_PROD"."EV_CADASTRO_CRIANCA" (
       created_at,
       nome_responsavel,
       cpf_responsavel,
@@ -156,15 +273,18 @@ begin
       idade_evento,
       categoria,
       valor_individual
-    ) values (
+    ) VALUES (
       current_date,
       v_crianca ->> 'nome_responsavel',
       v_crianca ->> 'cpf_responsavel',
       v_crianca ->> 'email_responsavel',
       v_crianca ->> 'telefone_responsavel',
-      v_crianca ->> 'cpf_crianca',
+      NULLIF(v_crianca ->> 'cpf_crianca', ''),
       v_crianca ->> 'nome_crianca',
-      nullif(v_crianca ->> 'data_nascimento', '')::date,
+      NULLIF(
+        v_crianca ->> 'data_nascimento',
+        ''
+      )::date,
       v_crianca ->> 'email',
       v_crianca ->> 'tm_camiseta',
       v_crianca ->> 'tm_chinelo',
@@ -172,17 +292,25 @@ begin
       v_crianca ->> 'categoria',
       (v_crianca ->> 'valor_individual')::numeric
     );
-  end loop;
+  END LOOP;
 
-  insert into "GIRAFFAS_PROD"."EV_PEDIDOS" (
+
+  -- ==========================================================
+  -- PEDIDO
+  -- ==========================================================
+
+  INSERT INTO "GIRAFFAS_PROD"."EV_PEDIDOS" (
     created_at,
     nome,
     email,
     cpf,
     cnpj,
     tipo_quarto,
+    tipo_cama,
+    preferencia_cama,
     divisao_pagamento,
     quantidade_parcelas,
+    valor_total,
     data_embarque,
     regiao_embarque,
     horario_embarque,
@@ -191,29 +319,43 @@ begin
     horario_desembarque,
     id_pedido,
     pedido_ativo
-  ) values (
+  ) VALUES (
     current_date,
     v_responsavel ->> 'nome',
     v_responsavel ->> 'email',
     v_responsavel ->> 'cpf',
     p_payload ->> 'cnpj',
     p_payload ->> 'tipo_quarto',
+    p_payload ->> 'tipo_cama',
+    p_payload ->> 'preferencia_cama',
     (p_payload ->> 'divisao_pagamento')::boolean,
-    p_payload ->> 'quantidade_parcelas',
-    nullif(v_transfer ->> 'data_embarque', '')::date,
+    (p_payload ->> 'quantidade_parcelas')::integer,
+    (p_payload ->> 'valor_total')::numeric,
+    NULLIF(v_transfer ->> 'data_embarque', '')::date,
     v_transfer ->> 'regiao_embarque',
     v_transfer ->> 'horario_embarque',
-    nullif(v_transfer ->> 'data_desembarque', '')::date,
+    NULLIF(v_transfer ->> 'data_desembarque', '')::date,
     v_transfer ->> 'regiao_desembarque',
     v_transfer ->> 'horario_desembarque',
     v_id_pedido,
     true
   );
 
-  for v_parcela in
-    select value from jsonb_array_elements(p_payload -> 'parcelas')
-  loop
-    insert into "GIRAFFAS_PROD"."EV_PARCELAS_PGTO" (
+
+  -- ==========================================================
+  -- PARCELAS
+  -- ==========================================================
+
+  FOR v_parcela IN
+    SELECT value
+      FROM pg_catalog.jsonb_array_elements(
+        COALESCE(
+          p_payload -> 'parcelas',
+          '[]'::jsonb
+        )
+      )
+  LOOP
+    INSERT INTO "GIRAFFAS_PROD"."EV_PARCELAS_PGTO" (
       cpf,
       numero_parcela,
       valor_parcela,
@@ -221,7 +363,7 @@ begin
       created_at,
       parcela_valida,
       id_pedido
-    ) values (
+    ) VALUES (
       v_parcela ->> 'cpf',
       (v_parcela ->> 'numero_parcela')::smallint,
       (v_parcela ->> 'valor_parcela')::numeric,
@@ -230,13 +372,134 @@ begin
       (v_parcela ->> 'parcela_valida')::boolean,
       v_id_pedido
     );
-  end loop;
+  END LOOP;
 
-  return jsonb_build_object('id_pedido', v_id_pedido);
-end;
-$$;
+  RETURN pg_catalog.jsonb_build_object(
+    'id_pedido',
+    v_id_pedido
+  );
+END;
+$function$;
 
-revoke execute on function "GIRAFFAS_PROD".cadastrar_evento(jsonb)
-  from public, anon, authenticated;
-grant execute on function "GIRAFFAS_PROD".cadastrar_evento(jsonb)
-  to service_role;
+
+-- ============================================================
+-- 3. PERMISSÕES DA RPC
+-- ============================================================
+
+REVOKE EXECUTE
+ON FUNCTION "GIRAFFAS_PROD".cadastrar_evento(jsonb)
+FROM PUBLIC, anon, authenticated;
+
+GRANT EXECUTE
+ON FUNCTION "GIRAFFAS_PROD".cadastrar_evento(jsonb)
+TO service_role;
+
+
+-- ============================================================
+-- 4. ATUALIZA A VIEW ADMINISTRATIVA
+--
+-- As colunas novas foram adicionadas no final para preservar
+-- a sequência das colunas que já existiam na view.
+-- ============================================================
+
+CREATE OR REPLACE VIEW "GIRAFFAS_PROD"."vw_ev_clientes"
+WITH (security_invoker = true)
+AS
+SELECT
+  a.data_inscricao,
+  b.pedido_ativo,
+  b.id_pedido AS protocolo,
+  a.nome,
+  a.nome_cracha,
+  a.cpf,
+  a.email,
+  a.data_nascimento,
+  a.tm_camiseta,
+  a.tm_chinelo,
+  ev_crianca.nome_crianca,
+  ev_crianca.cpf_crianca,
+  a.enviou_convite,
+  ev_acompanhante.cpf AS cpf_acompanhante,
+  ev_acompanhante.data_nascimento
+    AS data_nascimento_acompanhante,
+  ev_acompanhante.email
+    AS email_acompanhante,
+  ev_acompanhante.cpf_anfitriao,
+  ev_acompanhante.nome
+    AS nome_acompanhante,
+  a.cnpj,
+  a.telefone,
+  a.tipo_cliente,
+  a.presenca_cancelada,
+  a.participa_auditorio,
+  a.idade_evento,
+  a.categoria,
+  a.valor_individual,
+  b.tipo_quarto,
+  b.preferencia_cama,
+  b.divisao_pagamento,
+  b.quantidade_parcelas,
+  b.regiao_embarque,
+  b.horario_embarque,
+  b.regiao_desembarque,
+  b.horario_desembarque,
+
+  CASE
+    WHEN b.divisao_pagamento IS NOT TRUE
+      THEN 'Sem divisao de pagamento'::text
+    ELSE COALESCE(
+      divisao.nomes,
+      'Nenhum outro participante encontrado'::text
+    )
+  END AS nome_divisao,
+
+  a.categoria_participante,
+  ev_acompanhante.relacao_participante
+
+FROM "GIRAFFAS_PROD"."EV_PEDIDOS" b
+
+JOIN "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES" a
+  ON a.cpf = b.cpf
+
+LEFT JOIN LATERAL (
+  SELECT
+    pg_catalog.string_agg(
+      DISTINCT cliente_divisao.nome,
+      ', '
+      ORDER BY cliente_divisao.nome
+    ) AS nomes
+  FROM "GIRAFFAS_PROD"."EV_PARCELAS_PGTO" parcela
+
+  JOIN "GIRAFFAS_PROD"."EV_CADASTRO_CLIENTES"
+    cliente_divisao
+    ON cliente_divisao.cpf = parcela.cpf
+
+  WHERE parcela.id_pedido = b.id_pedido
+    AND parcela.cpf <> b.cpf
+) divisao ON true
+
+LEFT JOIN "GIRAFFAS_PROD"."EV_CADASTRO_CRIANCA"
+  ev_crianca
+  ON a.cpf = ev_crianca.cpf_responsavel
+
+LEFT JOIN "GIRAFFAS_PROD"."EV_ACOMPANHANTES"
+  ev_acompanhante
+  ON a.cpf = ev_acompanhante.cpf_anfitriao
+
+ORDER BY b.id_pedido;
+
+
+REVOKE ALL
+ON "GIRAFFAS_PROD"."vw_ev_clientes"
+FROM PUBLIC, anon, authenticated;
+
+GRANT SELECT
+ON "GIRAFFAS_PROD"."vw_ev_clientes"
+TO service_role;
+
+
+-- ============================================================
+-- 5. ATUALIZA O CACHE DO POSTGREST
+-- ============================================================
+
+NOTIFY pgrst, 'reload schema';

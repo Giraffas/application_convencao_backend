@@ -38,4 +38,4 @@ export default async function  getClientes(req, res) {
             mensagem: 'Erro ao consultar clientes, Erro interno no servidor'
         })
     }
-}
+}2
